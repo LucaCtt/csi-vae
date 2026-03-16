@@ -43,7 +43,7 @@ class EarlyStopping:
 
         return self.__plateau_counter >= self.__patience
 
-    def step_accuracy(self, val_accuracy: torch.Tensor, delta: float = 1e-6) -> None:
+    def step_accuracy(self, val_accuracy: torch.Tensor, delta: float = 1e-5) -> None:
         """Step using accuracy (higher is better).
 
         Arguments:
@@ -60,7 +60,7 @@ class EarlyStopping:
         if improved:
             self.__best_accuracy = val_accuracy
 
-    def step_loss(self, val_loss: torch.Tensor, delta: float = 1e-6) -> None:
+    def step_loss(self, val_loss: torch.Tensor, delta: float = 1e-5) -> None:
         """Step using loss (lower is better).
 
         Arguments:

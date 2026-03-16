@@ -16,7 +16,7 @@ from csi_vae.launcher_settings import LauncherSettings
 from csi_vae.trial import MessageType, TrialSettings
 
 # Logging config
-handler = RichHandler(level=logging.INFO, show_path=False)
+handler = RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=True)
 logging.basicConfig(level=logging.INFO, handlers=[handler], format="%(message)s")
 logger = logging.getLogger("rich")
 
@@ -122,7 +122,7 @@ def _poll_results(
 
             elif message_type == MessageType.SUCCESS:
                 logger.info(
-                    "[L=%d][T=%d][S=%d] Job succeeded with `accuracy`=%.4f.",
+                    "[L=%d][T=%d][S=%d] Job succeeded with accuracy=%.4f.",
                     latent_dim,
                     trial_number,
                     seed,
@@ -170,7 +170,7 @@ def _run_trial(
     lr = trial.suggest_float("lr", settings.lr.min, settings.lr.max, log=True)
 
     # kl_max: uniform float
-    kl_max = trial.suggest_float("kl_max", settings.kl_max.min, settings.kl_max.max, step=0.5)
+    kl_max = trial.suggest_float("kl_max", settings.kl_max.min, settings.kl_max.max, log=True)
 
     # batch_size: powers of 2 — sample exponent, then map back
     bs_exp_min = int(math.log2(settings.batch_size.min))
@@ -207,7 +207,7 @@ def _run_trial(
         jobs.append(job_id)
         logger.debug("[L=%d][T=%d][S=%d] Submitted job %s.", latent_dim, trial.number, seed, job_id)
 
-    logger.info("[L=%d][T=%d] Submitted %d jobs with `params`=%s.", latent_dim, trial.number, len(seeds), trial.params)
+    logger.info("[L=%d][T=%d] Submitted %d jobs with params=%s.", latent_dim, trial.number, len(seeds), trial.params)
 
     try:
         results = _poll_results(
@@ -233,7 +233,7 @@ def _run_trial(
     optuna.terminator.report_cross_validation_scores(trial, results)
 
     logger.info(
-        "[L=%d][T=%d] Trial finished with `median accuracy`=%.4f.",
+        "[L=%d][T=%d] Trial finished with median accuracy=%.4f.",
         latent_dim,
         trial.number,
         median_accuracy,
@@ -275,7 +275,7 @@ def _run_study(
 
     best = study.best_trial
     logger.info(
-        "[L=%d] Best trial is #%d with `median accuracy`=%.4f, params=%s.",
+        "[L=%d] Best trial is #%d with medianaccuracy=%.4f, params=%s.",
         latent_dim,
         best.number,
         best.value,

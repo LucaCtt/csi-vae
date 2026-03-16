@@ -55,7 +55,7 @@ def _make_dataloader(ds: Dataset, batch_size: int, shuffle: bool) -> DataLoader:
         ds,
         batch_size=batch_size,
         shuffle=shuffle,
-        num_workers=1, # may require some tuning
+        num_workers=(torch.cuda.device_count() if torch.cuda.is_available() else 1) * 4,
         persistent_workers=True,
         pin_memory=True,
     )
