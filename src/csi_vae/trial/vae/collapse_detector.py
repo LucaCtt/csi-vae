@@ -29,7 +29,7 @@ class CollapseDetector:
     def is_collapsed(self) -> bool:
         """Check if the model is considered collapsed based on recent KL loss history."""
         # Check for NaN values in KL history, indicating potential numerical instability and collapse
-        if any(torch.isnan(kl) for kl in self.__kl_history):
+        if any(torch.isnan(kl) or torch.isinf(kl) for kl in self.__kl_history):
             return True
 
         if len(self.__kl_history) < self.__patience:

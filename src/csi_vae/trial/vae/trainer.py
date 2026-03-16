@@ -132,7 +132,7 @@ class Trainer:
             epoch_loss, epoch_recon_loss, epoch_kl_loss = self.__run_epoch(annealer.weight)
 
             self.__collapse_detector.step(epoch_kl_loss)
-            if annealer.weight >= 1.0 and self.__collapse_detector.is_collapsed():
+            if self.__collapse_detector.is_collapsed():
                 raise PosteriorCollapseError
 
             total_metrics[0] += epoch_loss
