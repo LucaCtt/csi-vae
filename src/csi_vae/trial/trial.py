@@ -35,17 +35,16 @@ def _init_rng(seed: int) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
 
-def _make_dataloader(ds: Dataset, batch_size: int, shuffle: bool) -> DataLoader:
+def _make_dataloader(ds: Dataset, batch_size: int, shuffle: bool, seed: int) -> DataLoader:
     """Create a DataLoader with common settings.
 
     Arguments:
         ds: Dataset to load data from.
         batch_size: Number of samples per batch.
         shuffle: Whether to shuffle the data at the beginning of each epoch.
+        seed: Random seed for reproducibility of shuffling.
 
     Returns:
         A DataLoader instance for the given dataset and settings.
@@ -58,6 +57,7 @@ def _make_dataloader(ds: Dataset, batch_size: int, shuffle: bool) -> DataLoader:
         num_workers=(torch.cuda.device_count() if torch.cuda.is_available() else 1) * 4,
         persistent_workers=True,
         pin_memory=True,
+        generator=torch.Generator().manual_seed(seed),
     )
 
 
@@ -78,8 +78,8 @@ def _train_and_eval(settings: TrialSettings) -> tuple[float, float]:
         antenna_train_ds = dataset.SingleAntenna(full_train_ds, antenna_select)
         antenna_val_ds = dataset.SingleAntenna(full_val_ds, antenna_select)
 
-        antenna_train_dl = _make_dataloader(antenna_train_ds, settings.batch_size, shuffle=True)
-        antenna_val_dl = _make_dataloader(antenna_val_ds, settings.batch_size, shuffle=False)
+        antenna_train_dl = _make_dataloader(antenna_train_ds, settings.batch_size, shuffle=True, seed=settings.seed)
+        antenna_val_dl = _make_dataloader(antenna_val_ds, settings.batch_size, shuffle=False, seed=settings.seed)
 
         gaussian = vae.SingleAntenna(
             settings.window_size,
@@ -107,8 +107,8 @@ def _train_and_eval(settings: TrialSettings) -> tuple[float, float]:
         total_kl_loss += kl_loss
 
     # Train the fusion model on the latent representations from all antennas
-    full_train_dl = _make_dataloader(full_train_ds, settings.batch_size, shuffle=True)
-    full_val_dl = _make_dataloader(full_val_ds, settings.batch_size, shuffle=False)
+    full_train_dl = _make_dataloader(full_train_ds, settings.batch_size, shuffle=True, seed=settings.seed)
+    full_val_dl = _make_dataloader(full_val_ds, settings.batch_size, shuffle=False, seed=settings.seed)
 
     delayed_fusion = fusion.Delayed(gaussians, settings.latent_dim, settings.n_activities, settings.n_fusion_layers)
     delayed_fusion.compile(fullgraph=True)
@@ -129,7 +129,7 @@ def _train_and_eval(settings: TrialSettings) -> tuple[float, float]:
         saver = ModelSaver(settings.bucket_name, settings.region_name)
         saver.save_model(delayed_fusion, f"{settings.study_name}/{settings.trial_number}/{settings.seed}.pt")
 
-    full_test_dl = _make_dataloader(full_test_ds, settings.batch_size, shuffle=False)
+    full_test_dl = _make_dataloader(full_test_ds, settings.batch_size, shuffle=False, seed=settings.seed)
     evaluator = Evaluator(delayed_fusion, full_test_dl)
     return evaluator.evaluate(), total_kl_loss / settings.n_antennas
 
