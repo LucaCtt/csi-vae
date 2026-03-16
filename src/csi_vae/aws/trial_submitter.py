@@ -27,3 +27,7 @@ class TrialSubmitter:
             },
         )
         return response["jobId"]
+
+    def terminate(self, job_id: str, reason: str | None = None) -> None:
+        """Terminate a running AWS Batch job."""
+        self.__batch_client.terminate_job(jobId=job_id, reason=reason or "Terminated by TrialSubmitter")

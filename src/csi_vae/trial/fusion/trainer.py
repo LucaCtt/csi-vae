@@ -50,6 +50,9 @@ class Trainer:
         self.__scaler = torch.GradScaler(device=self.__device.type)
         self.__early_stopping = EarlyStopping(self.__model, params.patience, params.warmup_epochs)
 
+        self.__len_train = len(train_dl)
+        self.__len_val = len(val_dl)
+
     def __run_batch(self, x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         self.__optimizer.zero_grad()
 
@@ -71,12 +74,15 @@ class Trainer:
         metrics = torch.zeros(2, device=self.__device)
 
         for x, y in self.__train_dl:
-            loss, accuracy = self.__run_batch(x.to(self.__device), y.to(self.__device))
+            loss, accuracy = self.__run_batch(
+                x.to(self.__device, non_blocking=True),
+                y.to(self.__device, non_blocking=True),
+            )
 
             metrics[0] += loss
             metrics[1] += accuracy
 
-        metrics /= len(self.__train_dl)
+        metrics /= self.__len_train
 
         return metrics[0], metrics[1]
 
@@ -87,7 +93,7 @@ class Trainer:
         metrics = torch.zeros(2, device=self.__device)
 
         for x_cpu, y_cpu in self.__val_dl:
-            x, y = x_cpu.to(self.__device), y_cpu.to(self.__device)
+            x, y = x_cpu.to(self.__device, non_blocking=True), y_cpu.to(self.__device, non_blocking=True)
 
             with torch.autocast(device_type=self.__device.type, dtype=torch.float16):
                 logits = self.__model(x)
@@ -97,7 +103,7 @@ class Trainer:
             metrics[0] += loss.detach()
             metrics[1] += accuracy.detach()
 
-        metrics /= len(self.__val_dl)
+        metrics /= self.__len_val
         return metrics[0], metrics[1]
 
     def train(self, epochs: int) -> tuple[float, float]:
@@ -115,12 +121,12 @@ class Trainer:
 
         for _ in range(epochs):
             epoch_loss, epoch_accuracy = self.__run_epoch()
-            _, val_accuracy = self.__run_val_epoch()
 
             total_metrics[0] += epoch_loss
             total_metrics[1] += epoch_accuracy
             epochs_run += 1
 
+            _, val_accuracy = self.__run_val_epoch()
             self.__early_stopping.step_accuracy(val_accuracy)
             if self.__early_stopping.should_stop:
                 break

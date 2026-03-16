@@ -1,5 +1,3 @@
-import io
-
 import torch
 from torch import nn
 
@@ -9,6 +7,9 @@ class EarlyStopping:
 
     Supports accuracy-based (higher is better) and loss-based
     (lower is better, with optional min delta) stepping.
+
+    Note that the best weights are stored as a copy of the model's state_dict on the same device.
+    This avoids unnecessary CPU-GPU transfers on restore, but may be a problem for GPUs with very limited memory.
 
     Raises:
         RuntimeError: If restore_best_weights is called before any improvement
@@ -31,7 +32,7 @@ class EarlyStopping:
         self.__best_accuracy: torch.Tensor = torch.tensor(float("-inf"))
         self.__best_loss: torch.Tensor = torch.tensor(float("inf"))
         self.__plateau_counter = 0
-        self.__best_weights: bytes | None = None
+        self.__best_weights: dict[str, torch.Tensor] | None = None
 
     @property
     def should_stop(self) -> bool:
@@ -86,9 +87,11 @@ class EarlyStopping:
     def __update(self, improved: torch.Tensor) -> None:
         if improved:
             self.__plateau_counter = 0
-            buf = io.BytesIO()
-            torch.save(self.__model.state_dict(), buf)
-            self.__best_weights = buf.getvalue()
+
+            # Clone tensors and keep them on GPU.
+            # This may be a problem for GPUs with very limited memory,
+            # but avoids unnecessary CPU-GPU transfers on restore.
+            self.__best_weights = {k: v.clone() for k, v in self.__model.state_dict().items()}
         else:
             self.__plateau_counter += 1
 
@@ -98,4 +101,4 @@ class EarlyStopping:
             msg = "No checkpoint saved; restore called before any step."
             raise RuntimeError(msg)
 
-        self.__model.load_state_dict(torch.load(io.BytesIO(self.__best_weights), weights_only=True))
+        self.__model.load_state_dict(self.__best_weights)

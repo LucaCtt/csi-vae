@@ -26,7 +26,7 @@ class TrialSettings(BaseSettings):
     """Number of antennas in the CSI data."""
     stride: int = 50
     """Stride to use when segmenting the data (number of samples to skip between windows)."""
-    n_epochs: int = 200
+    n_epochs: int = 150
     """Number of epochs to train the autoencoder."""
     patience: int = 30
     """Number of epochs to wait before raising a collapse error or early stop."""

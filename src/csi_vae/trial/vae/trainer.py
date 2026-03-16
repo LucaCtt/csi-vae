@@ -62,6 +62,9 @@ class Trainer:
         self.__early_stopping = EarlyStopping(self.__gaussian, params.patience, params.warmup_epochs)
         self.__collapse_detector = CollapseDetector(params.patience)
 
+        self.__len_train = len(train_dl)
+        self.__len_val = len(val_dl)
+
     def __run_batch(self, x_true: torch.Tensor, kl_weight: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         self.__optimizer.zero_grad()
 
@@ -81,12 +84,12 @@ class Trainer:
         metrics = torch.zeros(3, device=self.__device)
 
         for x_true, _ in self.__train_dl:
-            loss, recon_loss, kl_loss = self.__run_batch(x_true.to(self.__device), kl_weight)
+            loss, recon_loss, kl_loss = self.__run_batch(x_true.to(self.__device, non_blocking=True), kl_weight)
             metrics[0] += loss
             metrics[1] += recon_loss
             metrics[2] += kl_loss
 
-        metrics /= len(self.__train_dl)
+        metrics /= self.__len_train
 
         return metrics[0], metrics[1], metrics[2]
 
@@ -97,7 +100,7 @@ class Trainer:
         metrics = torch.zeros(3, device=self.__device)
 
         for x_true_cpu, _ in self.__val_dl:
-            x_true = x_true_cpu.to(self.__device)
+            x_true = x_true_cpu.to(self.__device, non_blocking=True)
 
             with torch.autocast(device_type=self.__device.type, dtype=torch.float16):
                 x_recon, mu, logvar = self.__gaussian(x_true)
@@ -107,7 +110,7 @@ class Trainer:
             metrics[1] += recon_loss
             metrics[2] += kl_loss
 
-        metrics /= len(self.__val_dl)
+        metrics /= self.__len_val
 
         return metrics[0], metrics[1], metrics[2]
 
@@ -127,22 +130,22 @@ class Trainer:
 
         for _ in range(epochs):
             epoch_loss, epoch_recon_loss, epoch_kl_loss = self.__run_epoch(annealer.weight)
-            val_loss, _, _ = self.__run_val_epoch(annealer.weight)
-            annealer.step()
-
-            # Accumulate before any early-exit so counts stay consistent
-            total_metrics[0] += epoch_loss
-            total_metrics[1] += epoch_recon_loss
-            total_metrics[2] += epoch_kl_loss
-            epochs_run += 1
 
             self.__collapse_detector.step(epoch_kl_loss)
             if annealer.weight >= 1.0 and self.__collapse_detector.is_collapsed():
                 raise PosteriorCollapseError
 
+            total_metrics[0] += epoch_loss
+            total_metrics[1] += epoch_recon_loss
+            total_metrics[2] += epoch_kl_loss
+            epochs_run += 1
+
+            val_loss, _, _ = self.__run_val_epoch(annealer.weight)
             self.__early_stopping.step_loss(val_loss)
             if self.__early_stopping.should_stop:
                 break
+
+            annealer.step()
 
         self.__early_stopping.restore_best_weights()
 

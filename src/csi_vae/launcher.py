@@ -122,7 +122,7 @@ def _poll_results(
 
             elif message_type == MessageType.SUCCESS:
                 logger.info(
-                    "[L=%d][T=%d][S=%d] Job succeeded with accuracy=%.4f.",
+                    "[L=%d][T=%d][S=%d] Job succeeded with `accuracy`=%.4f.",
                     latent_dim,
                     trial_number,
                     seed,
@@ -186,6 +186,7 @@ def _run_trial(
 
     n_fusion_layers = trial.suggest_int("n_fusion_layers", settings.n_fusion_layers.min, settings.n_fusion_layers.max)
 
+    jobs = []
     # Submit one job per seed
     for seed in seeds:
         trial_settings = TrialSettings(
@@ -203,19 +204,25 @@ def _run_trial(
             n_fusion_layers=n_fusion_layers,
         )
         job_id = submitter.submit(trial_settings)
+        jobs.append(job_id)
         logger.debug("[L=%d][T=%d][S=%d] Submitted job %s.", latent_dim, trial.number, seed, job_id)
 
-    logger.info("[L=%d][T=%d] Submitted %d jobs with params %s.", latent_dim, trial.number, len(seeds), trial.params)
+    logger.info("[L=%d][T=%d] Submitted %d jobs with `params`=%s.", latent_dim, trial.number, len(seeds), trial.params)
 
-    results = _poll_results(
-        queue,
-        latent_dim,
-        seeds,
-        trial.number,
-        settings.max_pruned_seeds,
-        settings.poll_timeout,
-        settings.poll_interval,
-    )
+    try:
+        results = _poll_results(
+            queue,
+            latent_dim,
+            seeds,
+            trial.number,
+            settings.max_pruned_seeds,
+            settings.poll_timeout,
+            settings.poll_interval,
+        )
+    except Exception:
+        for job_id in jobs:
+            submitter.terminate(job_id)
+        raise
 
     median_accuracy = statistics.median(results)
     quantiles = statistics.quantiles(results, n=4)
@@ -226,7 +233,7 @@ def _run_trial(
     optuna.terminator.report_cross_validation_scores(trial, results)
 
     logger.info(
-        "[L=%d][T=%d] Trial finished with median accuracy=%.4f.",
+        "[L=%d][T=%d] Trial finished with `median accuracy`=%.4f.",
         latent_dim,
         trial.number,
         median_accuracy,
@@ -268,7 +275,7 @@ def _run_study(
 
     best = study.best_trial
     logger.info(
-        "[L=%d] Best trial is #%d with median accuracy=%.4f, params=%s.",
+        "[L=%d] Best trial is #%d with `median accuracy`=%.4f, params=%s.",
         latent_dim,
         best.number,
         best.value,
@@ -290,6 +297,7 @@ def run_launcher(settings: LauncherSettings | None = None) -> None:
 
     try:
         previous_best_accuracy: float | None = None
+        patience_counter = 0
 
         for latent_dim in range(settings.latent_dim.min, settings.latent_dim.max + 1):
             best_accuracy = _run_study(latent_dim, seeds, settings, submitter, queue)
@@ -304,8 +312,17 @@ def run_launcher(settings: LauncherSettings | None = None) -> None:
                 )
 
                 if delta < settings.min_accuracy_delta:
-                    logger.info("[L=%d] Accuracy did not improve sufficiently. Stopping search.", latent_dim)
-                    break
+                    patience_counter += 1
+                    logger.info(
+                        "[L=%d] Accuracy did not improve sufficiently. Patience counter: %d.",
+                        latent_dim,
+                        patience_counter,
+                    )
+                    if patience_counter >= settings.latent_dim_patience:
+                        logger.info("[L=%d] Patience exhausted. Stopping search.", latent_dim)
+                        break
+                else:
+                    patience_counter = 0
 
             previous_best_accuracy = best_accuracy
     finally:
