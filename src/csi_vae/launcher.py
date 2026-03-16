@@ -194,6 +194,7 @@ def _run_trial(
             trial_number=trial.number,
             queue_url=queue.url,
             region_name=settings.region_name,
+            bucket_name=settings.bucket_name,
             latent_dim=latent_dim,
             seed=seed,
             lr=lr,

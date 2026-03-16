@@ -41,6 +41,8 @@ class LauncherSettings(BaseSettings):
     """Name of the AWS Batch job queue to submit trials to."""
     batch_job_definition: str = "CSIVAEJobDefinition"
     """Name of the AWS Batch job definition to use."""
+    bucket_name: str = "csi-vae-816558913136-us-east-1-an"
+    """Name of the S3 bucket to use for storing trial results and logs."""
     region_name: str = "us-east-1"
     """Default AWS region to use for Batch operations."""
     poll_interval: int = 30  # 30 seconds
