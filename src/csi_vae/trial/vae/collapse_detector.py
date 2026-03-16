@@ -4,7 +4,7 @@ import torch
 class CollapseDetector:
     """Utility class to detect posterior collapse in VAE training based on KL divergence history."""
 
-    def __init__(self, patience: int, collapse_threshold: float = 1e-5) -> None:
+    def __init__(self, patience: int, collapse_threshold: float = 1e-4) -> None:
         """Initialize the CollapseDetector with specified parameters.
 
         Arguments:
@@ -35,7 +35,9 @@ class CollapseDetector:
         if len(self.__kl_history) < self.__patience:
             return False  # Not enough history to determine collapse
 
-        return all(kl < self.__collapse_threshold for kl in self.__kl_history) or all(
-            abs(self.__kl_history[i] - self.__kl_history[i - 1]) < self.__collapse_threshold
-            for i in range(1, len(self.__kl_history))
-        )
+        # Check if average KL loss is below the collapse threshold
+        if torch.mean(torch.stack(self.__kl_history)) < self.__collapse_threshold:
+            return True
+
+        # Check if KL loss is not changing significantly, indicating potential collapse
+        return bool(torch.std(torch.stack(self.__kl_history)) < self.__collapse_threshold)
