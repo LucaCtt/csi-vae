@@ -163,7 +163,12 @@ class Launcher:
         median_error_evaluator = optuna.terminator.MedianErrorEvaluator(emmr_evaluator)
         terminator = optuna.terminator.Terminator(emmr_evaluator, median_error_evaluator)
         callbacks = [optuna.terminator.TerminatorCallback(terminator)]
-        study.optimize(lambda trial: self.__run_trial(trial, latent_dim), n_trials=remaining, callbacks=callbacks)
+        study.optimize(
+            lambda trial: self.__run_trial(trial, latent_dim),
+            n_trials=remaining,
+            callbacks=callbacks,
+            catch=(optuna.exceptions.TrialPruned, TimeoutError, RuntimeError),
+        )
 
         # After optimization, log the best trial and return its value
         completed = [t for t in study.trials if t.state == TrialState.COMPLETE]
@@ -197,7 +202,8 @@ class Launcher:
                 **params,  # pyright: ignore[reportArgumentType]
             )
 
-            job_id = self.__submitter.submit(f"l{latent_dim}_t{trial.number}_s{seed}", trial_settings.model_dump())
+            job_name = f"{self.__settings.launch_name}_l{latent_dim}_t{trial.number}_s{seed}"
+            job_id = self.__submitter.submit(job_name, trial_settings.model_dump())
             jobs.append(job_id)
             logger.debug("[L=%d][T=%d][S=%d] Submitted job %s.", latent_dim, trial.number, seed, job_id)
 
@@ -211,6 +217,8 @@ class Launcher:
 
         try:
             results = self.__poll_results(latent_dim, trial.number)
+        except optuna.TrialPruned:
+            raise
         except Exception:
             for job_id in jobs:
                 self.__submitter.terminate(job_id)
