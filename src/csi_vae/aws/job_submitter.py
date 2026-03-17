@@ -1,7 +1,6 @@
 import boto3
 
 from csi_vae.aws.retry import aws_retry
-from csi_vae.jobs.job_settings import JobSettings
 
 
 class JobSubmitter:
@@ -14,16 +13,14 @@ class JobSubmitter:
         self.__job_definition = job_definition
 
     @aws_retry
-    def submit(self, job_name: str, settings: JobSettings) -> str:
+    def submit(self, job_name: str, settings: dict) -> str:
         """Submit a job to AWS Batch with the given environment variables."""
         response = self.__batch_client.submit_job(
             jobName=job_name,
             jobQueue=self.__job_queue,
             jobDefinition=self.__job_definition,
             containerOverrides={
-                "environment": [
-                    {"name": k, "value": str(v)} for k, v in settings.model_dump().items() if v is not None
-                ],
+                "environment": [{"name": k, "value": str(v)} for k, v in settings.items() if v is not None],
             },
         )
         return response["jobId"]

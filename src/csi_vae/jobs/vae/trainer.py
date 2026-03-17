@@ -137,7 +137,7 @@ class Trainer:
             epoch_loss, epoch_recon_loss, epoch_kl_loss = self.__run_epoch(annealer.weight)
 
             # We (improperly) consider explosions as a form of collapse
-            if any(_is_dead(metric) for metric in (epoch_loss, epoch_recon_loss, epoch_kl_loss)):
+            if _is_dead(torch.tensor([epoch_loss, epoch_recon_loss, epoch_kl_loss])):
                 raise PosteriorCollapseError
 
             self.__collapse_detector.step(epoch_kl_loss)

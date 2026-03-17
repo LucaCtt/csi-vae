@@ -197,7 +197,7 @@ class Launcher:
                 **params,  # pyright: ignore[reportArgumentType]
             )
 
-            job_id = self.__submitter.submit(f"l{latent_dim}_t{trial.number}_s{seed}", trial_settings)
+            job_id = self.__submitter.submit(f"l{latent_dim}_t{trial.number}_s{seed}", trial_settings.model_dump())
             jobs.append(job_id)
             logger.debug("[L=%d][T=%d][S=%d] Submitted job %s.", latent_dim, trial.number, seed, job_id)
 
