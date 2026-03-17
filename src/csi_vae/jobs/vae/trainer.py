@@ -9,6 +9,11 @@ from csi_vae.jobs.vae.collapse_detector import CollapseDetector
 from csi_vae.jobs.vae.kl_annealer import KLAnnealer
 
 
+def _is_dead(tensor: torch.Tensor) -> bool:
+    """Check if a tensor contains NaN or infinite values."""
+    return bool(torch.isnan(tensor).any() or torch.isinf(tensor).any())
+
+
 class PosteriorCollapseError(Exception):
     """Raised when the VAE posterior collapses during training."""
 
@@ -130,6 +135,10 @@ class Trainer:
 
         for _ in range(epochs):
             epoch_loss, epoch_recon_loss, epoch_kl_loss = self.__run_epoch(annealer.weight)
+
+            # We (improperly) consider explosions as a form of collapse
+            if any(_is_dead(metric) for metric in (epoch_loss, epoch_recon_loss, epoch_kl_loss)):
+                raise PosteriorCollapseError
 
             self.__collapse_detector.step(epoch_kl_loss)
             if self.__collapse_detector.is_collapsed():
