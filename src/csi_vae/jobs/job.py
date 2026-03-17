@@ -21,7 +21,7 @@ torch.set_float32_matmul_precision("high")
 
 
 class MessageType(StrEnum):
-    """Enumeration of possible trial statuses."""
+    """Enumeration of possible job statuses."""
 
     STARTING = "STARTING"
     SUCCESS = "SUCCESS"
@@ -134,8 +134,8 @@ def _train_and_eval(settings: JobSettings) -> tuple[float, float]:
     return evaluator.evaluate(), total_kl_loss / settings.n_antennas
 
 
-def run_trial(settings: JobSettings | None = None) -> None:
-    """Run a single trial of training and evaluating the autoencoder and classifier."""
+def run_job(settings: JobSettings | None = None) -> None:
+    """Run a single job of training and evaluating the autoencoder and classifier."""
     settings = JobSettings() if settings is None else settings
     _init_rng(settings.seed)
 
@@ -159,4 +159,4 @@ def run_trial(settings: JobSettings | None = None) -> None:
 
 
 if __name__ == "__main__":
-    run_trial()
+    run_job()

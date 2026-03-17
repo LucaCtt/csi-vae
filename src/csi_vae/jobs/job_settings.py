@@ -2,14 +2,14 @@ from pydantic_settings import BaseSettings
 
 
 class JobSettings(BaseSettings):
-    """Trial settings, loaded from environment variables or .env file."""
+    """Job settings, loaded from environment variables or .env file."""
 
     trial_number: int = 0
     """Unique identifier for the trial, used for logging and result storage."""
     dataset_path: str = "dataset.h5"
     """Path to the dataset to be used for training and evaluation."""
     queue_url: str | None = None
-    """URL of the SQS message queue. If set to None, the trial will not send results to a queue."""
+    """URL of the SQS message queue. If set to None, the job will not send results to a queue."""
     bucket_name: str | None = None
     """Name of the S3 bucket where results will be stored. If set to None, results will not be uploaded to S3."""
     bucket_key: str | None = "/"

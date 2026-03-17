@@ -8,7 +8,7 @@ from csi_vae.aws.retry import aws_retry
 
 
 class ModelSaver:
-    """Class responsible for saving trial results, such as trained models, to S3."""
+    """Class responsible for saving job results, such as trained models, to S3."""
 
     def __init__(self, bucket_name: str, region_name: str) -> None:
         """Initialize the ModelSaver with the S3 bucket name and AWS region."""
@@ -17,7 +17,7 @@ class ModelSaver:
 
     @aws_retry
     def save_model(self, model: nn.Module, key: str) -> None:
-        """Save the model to S3 with a filename that includes the study name, trial number, and seed."""
+        """Save the model to S3 with a filename that includes the study name, job number, and seed."""
         buffer = io.BytesIO()
         torch.save(model.state_dict(), buffer)
         buffer.seek(0)

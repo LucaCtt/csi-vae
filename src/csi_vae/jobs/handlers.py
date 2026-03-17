@@ -20,8 +20,8 @@ def _timestamp_to_iso(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp, tz=UTC).isoformat()
 
 
-class _BaseTrialHandler(logging.Handler):
-    """Base handler that enriches log records with trial metadata."""
+class _BaseJobHandler(logging.Handler):
+    """Base handler that enriches log records with job metadata."""
 
     def __init__(self, latent_dim: int, trial_number: int, seed: int) -> None:
         super().__init__()
@@ -43,7 +43,7 @@ class _BaseTrialHandler(logging.Handler):
         }
 
 
-class StreamHandler(_BaseTrialHandler, logging.StreamHandler):
+class StreamHandler(_BaseJobHandler, logging.StreamHandler):
     """Logging handler that outputs enriched log records to the console."""
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -61,7 +61,7 @@ class StreamHandler(_BaseTrialHandler, logging.StreamHandler):
         logging.StreamHandler.emit(self, clean_record)
 
 
-class QueueHandler(_BaseTrialHandler, logging.Handler):
+class QueueHandler(_BaseJobHandler, logging.Handler):
     """Logging handler that sends enriched log records to an AWS SQS queue."""
 
     def __init__(self, queue: MessagesQueue, latent_dim: int, trial_number: int, seed: int) -> None:

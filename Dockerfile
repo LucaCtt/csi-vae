@@ -43,4 +43,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 # Switch to non-root after install
 USER appuser
 
-ENTRYPOINT ["python", "src/csi_vae/trial/trial.py"]
+ENTRYPOINT ["python", "src/csi_vae/jobs/job.py"]
