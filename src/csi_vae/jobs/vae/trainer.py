@@ -3,10 +3,10 @@ from dataclasses import dataclass
 import torch
 from torch.utils.data import DataLoader
 
-from csi_vae.trial import vae
-from csi_vae.trial.early_stopping import EarlyStopping
-from csi_vae.trial.vae.collapse_detector import CollapseDetector
-from csi_vae.trial.vae.kl_annealer import KLAnnealer
+from csi_vae.jobs import vae
+from csi_vae.jobs.early_stopping import EarlyStopping
+from csi_vae.jobs.vae.collapse_detector import CollapseDetector
+from csi_vae.jobs.vae.kl_annealer import KLAnnealer
 
 
 class PosteriorCollapseError(Exception):

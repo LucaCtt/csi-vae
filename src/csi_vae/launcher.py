@@ -12,8 +12,8 @@ from optuna.trial import TrialState
 from rich.logging import RichHandler
 
 from csi_vae.aws import JobSubmitter, MessagesQueue
+from csi_vae.jobs import JobSettings, MessageType
 from csi_vae.launcher_settings import LauncherSettings
-from csi_vae.trial import MessageType, TrialSettings
 
 # Logging config
 handler = RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=True)
@@ -186,7 +186,7 @@ class Launcher:
 
         jobs = []
         for seed in self.__seeds:
-            trial_settings = TrialSettings(
+            trial_settings = JobSettings(
                 region_name=self.__settings.region_name,
                 bucket_name=self.__settings.bucket_name,
                 bucket_key=f"{self.__settings.launch_name}/l{latent_dim}/t{trial.number}/s{seed}",

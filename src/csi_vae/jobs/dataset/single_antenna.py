@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 
-from csi_vae.trial.dataset.multi_antenna import MultiAntenna
+from csi_vae.jobs.dataset.multi_antenna import MultiAntenna
 
 
 class SingleAntenna(Dataset):

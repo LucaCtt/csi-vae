@@ -5,7 +5,7 @@ from typing import cast
 import h5py
 import numpy as np
 
-from csi_vae.trial.dataset.multi_antenna import MultiAntenna
+from csi_vae.jobs.dataset.multi_antenna import MultiAntenna
 
 _SPLITS = ("train", "val", "test")
 

@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
 
-from csi_vae.trial import fusion
+from csi_vae.jobs import fusion
 
 
 class Evaluator:

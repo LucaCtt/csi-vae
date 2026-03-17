@@ -3,7 +3,7 @@ import math
 import torch
 from torch import nn
 
-from csi_vae.trial.vae.gaussian import SingleAntenna
+from csi_vae.jobs.vae.gaussian import SingleAntenna
 
 
 def _next_multiple_of_8(n: int) -> int:

@@ -4,8 +4,8 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from csi_vae.trial import fusion
-from csi_vae.trial.early_stopping import EarlyStopping
+from csi_vae.jobs import fusion
+from csi_vae.jobs.early_stopping import EarlyStopping
 
 
 @dataclass(frozen=True)

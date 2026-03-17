@@ -2,7 +2,7 @@ from typing import NamedTuple, TypeVar
 
 from pydantic_settings import BaseSettings
 
-from csi_vae.trial.vae import CONV_SPECS
+from csi_vae.jobs.vae import CONV_SPECS
 
 NumberT = TypeVar("NumberT", int, float)
 

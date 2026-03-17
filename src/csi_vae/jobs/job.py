@@ -8,10 +8,10 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from csi_vae.aws import MessagesQueue, ModelSaver
-from csi_vae.trial import dataset, fusion, vae
-from csi_vae.trial.evaluator import Evaluator
-from csi_vae.trial.handlers import QueueHandler, StreamHandler
-from csi_vae.trial.trial_settings import TrialSettings
+from csi_vae.jobs import dataset, fusion, vae
+from csi_vae.jobs.evaluator import Evaluator
+from csi_vae.jobs.handlers import QueueHandler, StreamHandler
+from csi_vae.jobs.job_settings import JobSettings
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -61,7 +61,7 @@ def _make_dataloader(ds: Dataset, batch_size: int, shuffle: bool, seed: int) -> 
     )
 
 
-def _train_and_eval(settings: TrialSettings) -> tuple[float, float]:
+def _train_and_eval(settings: JobSettings) -> tuple[float, float]:
     """Train the autoencoder and classifier, then evaluate the accuracy on the test set."""
     full_train_ds, full_val_ds, full_test_ds = dataset.load(
         dataset_path=Path(settings.dataset_path),
@@ -134,9 +134,9 @@ def _train_and_eval(settings: TrialSettings) -> tuple[float, float]:
     return evaluator.evaluate(), total_kl_loss / settings.n_antennas
 
 
-def run_trial(settings: TrialSettings | None = None) -> None:
+def run_trial(settings: JobSettings | None = None) -> None:
     """Run a single trial of training and evaluating the autoencoder and classifier."""
-    settings = TrialSettings() if settings is None else settings
+    settings = JobSettings() if settings is None else settings
     _init_rng(settings.seed)
 
     logger.addHandler(StreamHandler(settings.latent_dim, settings.trial_number, settings.seed))

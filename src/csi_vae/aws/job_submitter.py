@@ -1,7 +1,7 @@
 import boto3
 
 from csi_vae.aws.retry import aws_retry
-from csi_vae.trial.trial_settings import TrialSettings
+from csi_vae.jobs.job_settings import JobSettings
 
 
 class JobSubmitter:
@@ -14,7 +14,7 @@ class JobSubmitter:
         self.__job_definition = job_definition
 
     @aws_retry
-    def submit(self, job_name: str, settings: TrialSettings) -> str:
+    def submit(self, job_name: str, settings: JobSettings) -> str:
         """Submit a job to AWS Batch with the given environment variables."""
         response = self.__batch_client.submit_job(
             jobName=job_name,

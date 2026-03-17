@@ -1,7 +1,7 @@
 from pydantic_settings import BaseSettings
 
 
-class TrialSettings(BaseSettings):
+class JobSettings(BaseSettings):
     """Trial settings, loaded from environment variables or .env file."""
 
     trial_number: int = 0
