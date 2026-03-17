@@ -23,9 +23,8 @@ def _timestamp_to_iso(timestamp: float) -> str:
 class _BaseTrialHandler(logging.Handler):
     """Base handler that enriches log records with trial metadata."""
 
-    def __init__(self, study_name: str, latent_dim: int, trial_number: int, seed: int) -> None:
+    def __init__(self, latent_dim: int, trial_number: int, seed: int) -> None:
         super().__init__()
-        self._study_name = study_name
         self._latent_dim = latent_dim
         self._trial_number = trial_number
         self._seed = seed
@@ -38,7 +37,6 @@ class _BaseTrialHandler(logging.Handler):
         return {
             **message,
             "date_time": _timestamp_to_iso(record.created),
-            "study_name": self._study_name,
             "latent_dim": self._latent_dim,
             "trial_number": self._trial_number,
             "seed": self._seed,
@@ -66,9 +64,9 @@ class StreamHandler(_BaseTrialHandler, logging.StreamHandler):
 class QueueHandler(_BaseTrialHandler, logging.Handler):
     """Logging handler that sends enriched log records to an AWS SQS queue."""
 
-    def __init__(self, queue: MessagesQueue, study_name: str, latent_dim: int, trial_number: int, seed: int) -> None:
+    def __init__(self, queue: MessagesQueue, latent_dim: int, trial_number: int, seed: int) -> None:
         """Initialize the QueueHandler with the given queue and trial metadata."""
-        super().__init__(study_name, latent_dim, trial_number, seed)
+        super().__init__(latent_dim, trial_number, seed)
         self.__queue = queue
 
     def emit(self, record: logging.LogRecord) -> None:

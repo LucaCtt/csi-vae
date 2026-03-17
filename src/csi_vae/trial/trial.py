@@ -127,7 +127,7 @@ def _train_and_eval(settings: TrialSettings) -> tuple[float, float]:
 
     if settings.bucket_name:
         saver = ModelSaver(settings.bucket_name, settings.region_name)
-        saver.save_model(delayed_fusion, f"{settings.study_name}/{settings.trial_number}/{settings.seed}.pt")
+        saver.save_model(delayed_fusion, f"{settings.bucket_key}/delayed_fusion.pt")
 
     full_test_dl = _make_dataloader(full_test_ds, settings.batch_size, shuffle=False, seed=settings.seed)
     evaluator = Evaluator(delayed_fusion, full_test_dl)
@@ -139,12 +139,10 @@ def run_trial(settings: TrialSettings | None = None) -> None:
     settings = TrialSettings() if settings is None else settings
     _init_rng(settings.seed)
 
-    logger.addHandler(StreamHandler(settings.study_name, settings.latent_dim, settings.trial_number, settings.seed))
+    logger.addHandler(StreamHandler(settings.latent_dim, settings.trial_number, settings.seed))
     if settings.queue_url:
         queue = MessagesQueue.from_url(settings.queue_url, settings.region_name)
-        logger.addHandler(
-            QueueHandler(queue, settings.study_name, settings.latent_dim, settings.trial_number, settings.seed),
-        )
+        logger.addHandler(QueueHandler(queue, settings.latent_dim, settings.trial_number, settings.seed))
 
     logger.info({"type": MessageType.STARTING})
 

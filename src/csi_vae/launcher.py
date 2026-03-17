@@ -11,7 +11,7 @@ import optuna.terminator
 from optuna.trial import TrialState
 from rich.logging import RichHandler
 
-from csi_vae.aws import MessagesQueue, TrialSubmitter
+from csi_vae.aws import JobSubmitter, MessagesQueue
 from csi_vae.launcher_settings import LauncherSettings
 from csi_vae.trial import MessageType, TrialSettings
 
@@ -40,20 +40,21 @@ def _generate_seeds(starter_seed: int, n_seeds: int) -> list[int]:
     return [rng.randint(0, 2**31 - 1) for _ in range(n_seeds)]
 
 
-def _make_study(study_name: str, journal_path: str | None) -> optuna.Study:
+def _make_study(study_name: str, storage_dir: str | None, seed: int) -> optuna.Study:
     """Create (or load) an Optuna study backed by a journal file.
 
     Arguments:
         study_name: The name of the study to create or load.
-        journal_path: The path to the journal file to use for storage.
-            If None, the study will be created without persistent storage.
+        storage_dir: The directory to use for storage. If None, the study will be created without persistent storage.
+        seed: The seed to use for the random number generator.
 
     Returns:
         An Optuna Study object.
 
     """
-    if journal_path:
-        Path(journal_path).parent.mkdir(parents=True, exist_ok=True)
+    if storage_dir:
+        Path(storage_dir).mkdir(parents=True, exist_ok=True)
+        journal_path = f"{storage_dir}/{study_name}.sqlite"
     else:
         journal_path = ":memory:"
 
@@ -67,267 +68,257 @@ def _make_study(study_name: str, journal_path: str | None) -> optuna.Study:
     return optuna.create_study(
         study_name=study_name,
         storage=storage,
+        sampler=optuna.samplers.TPESampler(seed=seed),
         direction="maximize",
         load_if_exists=True,
     )
 
 
-def _poll_results(
-    queue: MessagesQueue,
-    latent_dim: int,
-    seeds: list[int],
-    trial_number: int,
-    max_pruned_seeds: int,
-    poll_timeout: float,
-    poll_interval: float,
-) -> list[float]:
-    """Poll the messages queue for results from the given trial until all seeds have reported or too many collapses.
-
-    Arguments:
-        queue: The MessagesQueue to poll for results.
-        latent_dim: The latent dimension for this trial (used to filter messages for this study).
-        seeds: The list of seeds that were run for this trial (used to track which results are still pending).
-        trial_number: The Optuna trial number (used to filter messages for this trial).
-        max_pruned_seeds: The maximum number of seed collapses allowed before pruning the trial.
-        poll_timeout: The maximum number of seconds to wait for results before giving up.
-        poll_interval: The number of seconds to wait between polling attempts.
-
-    Returns:
-        A list of accuracy values for each successful seed.
-
-    """
-    results: list[float] = []
-    collapses = 0
-    start = time.monotonic()
-
-    while len(results) + collapses < len(seeds):
-        time.sleep(poll_interval)
-
-        if time.monotonic() - start > poll_timeout:
-            msg = "Timed out waiting for seed results."
-            raise TimeoutError(msg)
-
-        messages = queue.pop(max_messages=len(seeds))
-
-        for message in messages:
-            if message["trial_number"] != trial_number or message["latent_dim"] != latent_dim:
-                continue
-
-            start = time.monotonic()  # reset timeout timer upon receiving a relevant message
-            seed = message["seed"]
-            message_type = message["type"]
-
-            if message_type == MessageType.STARTING:
-                logger.debug("[L=%d][T=%d][S=%d] Job started.", latent_dim, trial_number, seed)
-
-            elif message_type == MessageType.SUCCESS:
-                logger.info(
-                    "[L=%d][T=%d][S=%d] Job succeeded with accuracy=%.4f.",
-                    latent_dim,
-                    trial_number,
-                    seed,
-                    message["accuracy"],
-                )
-                results.append(message["accuracy"])
-
-            elif message_type == MessageType.COLLAPSE:
-                collapses += 1
-                logger.warning(
-                    "[L=%d][T=%d][S=%d] Job collapsed (%d total).",
-                    latent_dim,
-                    trial_number,
-                    seed,
-                    collapses,
-                )
-                if collapses > max_pruned_seeds:
-                    logger.warning(
-                        "[L=%d][T=%d][S=%d] Too many collapses, trial pruned.",
-                        latent_dim,
-                        trial_number,
-                        seed,
-                    )
-
-                    msg = f"More than {max_pruned_seeds} seeds collapsed (got {collapses})."
-                    raise optuna.TrialPruned(msg)
-
-            elif message_type == MessageType.ERROR:
-                msg = f"Seed {seed} failed with error: {message.get('error', 'Unknown error')}"
-                raise RuntimeError(msg)
-
-    return results
-
-
-def _run_trial(
-    trial: optuna.Trial,
-    latent_dim: int,
-    seeds: list[int],
-    settings: LauncherSettings,
-    submitter: TrialSubmitter,
-    queue: MessagesQueue,
-) -> float:
-    """Run a single Optuna trial."""
-    # lr: log-uniform float
+def _get_params(trial: optuna.Trial, settings: LauncherSettings) -> dict[str, str | int | float]:
+    """Extract the parameters for a trial as a dictionary."""
     lr = trial.suggest_float("lr", settings.lr.min, settings.lr.max, log=True)
-
-    # kl_max: uniform float
     kl_max = trial.suggest_float("kl_max", settings.kl_max.min, settings.kl_max.max, log=True)
+    n_fusion_layers = trial.suggest_int("n_fusion_layers", settings.n_fusion_layers.min, settings.n_fusion_layers.max)
+    conv_layers_spec = trial.suggest_categorical("conv_layers_spec", settings.conv_layers_spec.values)
 
-    # batch_size: powers of 2 — sample exponent, then map back
     bs_exp_min = int(math.log2(settings.batch_size.min))
     bs_exp_max = int(math.log2(settings.batch_size.max))
     batch_size = 2 ** trial.suggest_int("batch_size_exp", bs_exp_min, bs_exp_max)
 
-    # conv_channels: multiples of 8 — sample multiplier, then map back
     cc_mult_min = settings.conv_channels.min // 8
     cc_mult_max = settings.conv_channels.max // 8
     conv_channels = 8 * trial.suggest_int("conv_channels_mult", cc_mult_min, cc_mult_max)
 
-    conv_layers_spec = trial.suggest_categorical("conv_layers_spec", settings.conv_layers_spec.values)
+    return {
+        "lr": lr,
+        "kl_max": kl_max,
+        "batch_size": batch_size,
+        "conv_channels": conv_channels,
+        "conv_layers_spec": conv_layers_spec,
+        "n_fusion_layers": n_fusion_layers,
+    }
 
-    n_fusion_layers = trial.suggest_int("n_fusion_layers", settings.n_fusion_layers.min, settings.n_fusion_layers.max)
 
-    jobs = []
-    # Submit one job per seed
-    for seed in seeds:
-        trial_settings = TrialSettings(
-            study_name=settings.launch_name,
-            trial_number=trial.number,
-            queue_url=queue.url,
-            region_name=settings.region_name,
-            bucket_name=settings.bucket_name,
-            latent_dim=latent_dim,
-            seed=seed,
-            lr=lr,
-            kl_max=kl_max,
-            batch_size=batch_size,
-            conv_channels=conv_channels,
-            conv_layers_spec=conv_layers_spec,
-            n_fusion_layers=n_fusion_layers,
-        )
-        job_id = submitter.submit(trial_settings)
-        jobs.append(job_id)
-        logger.debug("[L=%d][T=%d][S=%d] Submitted job %s.", latent_dim, trial.number, seed, job_id)
+class Launcher:
+    """Launcher for running Optuna studies on AWS Batch."""
 
-    logger.info("[L=%d][T=%d] Submitted %d jobs with params=%s.", latent_dim, trial.number, len(seeds), trial.params)
+    def __init__(self, settings: LauncherSettings) -> None:
+        """Initialize the launcher with the given settings.
 
-    try:
-        results = _poll_results(
-            queue,
+        Arguments:
+            settings: The LauncherSettings object containing configuration for the launcher.
+
+        """
+        self.__settings = settings
+        self.__submitter = JobSubmitter(settings.batch_job_queue, settings.batch_job_definition, settings.region_name)
+        self.__queue = MessagesQueue(settings.region_name)
+        self.__seeds = _generate_seeds(settings.starter_seed, settings.n_seeds_per_trial)
+
+    def launch(self) -> None:
+        """Launch the Optuna studies, iterating over latent dimensions and running trials."""
+        self.__queue.create(self.__settings.launch_name)
+
+        best_accuracy: float = float("-inf")
+        patience_counter = 0
+
+        for latent_dim in range(self.__settings.latent_dim.min, self.__settings.latent_dim.max + 1):
+            accuracy = self.__run_study(latent_dim)
+
+            delta = accuracy - best_accuracy
+            if delta < self.__settings.min_accuracy_delta:
+                logger.info("[L=%d] Accuracy did not improve sufficiently.", latent_dim)
+
+                patience_counter += 1
+                if patience_counter >= self.__settings.latent_dim_patience:
+                    logger.info("[L=%d] Patience exhausted. Stopping search.", latent_dim)
+                    break
+            else:
+                logger.info("[L=%d] Accuracy improved by %.4f.", latent_dim, delta)
+                patience_counter = 0
+                best_accuracy = accuracy
+
+    def __run_study(self, latent_dim: int) -> float:
+        """Run all trials for a given latent_dim. Returns the best accuracy achieved.
+
+        Arguments:
+            latent_dim: The latent dimension to run the study for.
+
+        Returns:
+            The best median accuracy achieved across all trials for this latent dimension.
+
+        """
+        study_name = f"l{latent_dim}"
+        study = _make_study(study_name, self.__settings.storage_dir, self.__settings.starter_seed)
+
+        # Check how many trials are already complete to avoid re-running them if the launcher is restarted
+        already_done = sum(1 for t in study.trials if t.state == TrialState.COMPLETE)
+        remaining = self.__settings.n_trials - already_done
+        if remaining <= 0:
+            logger.info("[L=%d] Study already complete, skipping.", latent_dim)
+            return study.best_value
+
+        logger.info("[L=%d] Starting study '%s' (%d trials remaining).", latent_dim, study_name, remaining)
+
+        emmr_evaluator = optuna.terminator.EMMREvaluator()
+        median_error_evaluator = optuna.terminator.MedianErrorEvaluator(emmr_evaluator)
+        terminator = optuna.terminator.Terminator(emmr_evaluator, median_error_evaluator)
+        callbacks = [optuna.terminator.TerminatorCallback(terminator)]
+        study.optimize(lambda trial: self.__run_trial(trial, latent_dim), n_trials=remaining, callbacks=callbacks)
+
+        # After optimization, log the best trial and return its value
+        completed = [t for t in study.trials if t.state == TrialState.COMPLETE]
+        if not completed:
+            logger.warning("[L=%d] No completed trials.", latent_dim)
+            return 0.0
+
+        logger.info(
+            "[L=%d] Best trial is #%d with median_accuracy=%.4f, params=%s.",
             latent_dim,
-            seeds,
-            trial.number,
-            settings.max_pruned_seeds,
-            settings.poll_timeout,
-            settings.poll_interval,
+            study.best_trial.number,
+            study.best_trial.value,
+            study.best_trial.params,
         )
-    except Exception:
-        for job_id in jobs:
-            submitter.terminate(job_id)
-        raise
+        return study.best_trial.value if study.best_trial.value is not None else 0.0
 
-    median_accuracy = statistics.median(results)
-    quantiles = statistics.quantiles(results, n=4)
-    trial.set_user_attr("accuracies", results)
-    trial.set_user_attr("accuracy_p25", float(quantiles[0]))
-    trial.set_user_attr("accuracy_p75", float(quantiles[2]))
+    def __run_trial(self, trial: optuna.Trial, latent_dim: int) -> float:
+        """Run a single Optuna trial."""
+        params = _get_params(trial, self.__settings)
 
-    optuna.terminator.report_cross_validation_scores(trial, results)
+        jobs = []
+        for seed in self.__seeds:
+            trial_settings = TrialSettings(
+                region_name=self.__settings.region_name,
+                bucket_name=self.__settings.bucket_name,
+                bucket_key=f"{self.__settings.launch_name}/l{latent_dim}/t{trial.number}/s{seed}",
+                queue_url=self.__queue.url,
+                trial_number=trial.number,
+                latent_dim=latent_dim,
+                seed=seed,
+                **params,  # pyright: ignore[reportArgumentType]
+            )
 
-    logger.info(
-        "[L=%d][T=%d] Trial finished with median accuracy=%.4f.",
-        latent_dim,
-        trial.number,
-        median_accuracy,
-    )
+            job_id = self.__submitter.submit(f"l{latent_dim}_t{trial.number}_s{seed}", trial_settings)
+            jobs.append(job_id)
+            logger.debug("[L=%d][T=%d][S=%d] Submitted job %s.", latent_dim, trial.number, seed, job_id)
 
-    return median_accuracy
+        logger.info(
+            "[L=%d][T=%d] Submitted %d jobs with params=%s.",
+            latent_dim,
+            trial.number,
+            len(self.__seeds),
+            trial.params,
+        )
 
+        try:
+            results = self.__poll_results(latent_dim, trial.number)
+        except Exception:
+            for job_id in jobs:
+                self.__submitter.terminate(job_id)
+            raise
 
-def _run_study(
-    latent_dim: int,
-    seeds: list[int],
-    settings: LauncherSettings,
-    submitter: TrialSubmitter,
-    queue: MessagesQueue,
-) -> float:
-    """Run all trials for a given latent_dim. Returns the best accuracy achieved."""
-    study_name = f"{settings.launch_name}_l{latent_dim}"
-    study = _make_study(study_name, f"{settings.journal_dir}/l{latent_dim}.sqlite")
+        median_accuracy = statistics.median(list(results.values()))
+        quantiles = statistics.quantiles(list(results.values()))
+        trial.set_user_attr("accuracies", results)
+        trial.set_user_attr("accuracy_p25", float(quantiles[0]))
+        trial.set_user_attr("accuracy_p75", float(quantiles[2]))
 
-    already_done = sum(1 for t in study.trials if t.state == TrialState.COMPLETE)
-    remaining = settings.n_trials - already_done
-    if remaining <= 0:
-        logger.info("[L=%d] Study already complete, skipping.", latent_dim)
-        return study.best_value
+        logger.info(
+            "[L=%d][T=%d] Trial finished with median_accuracy=%.4f.",
+            latent_dim,
+            trial.number,
+            median_accuracy,
+        )
 
-    logger.info("[L=%d] Starting study '%s' (%d trials remaining).", latent_dim, study_name, remaining)
+        return median_accuracy
 
-    def objective(trial: optuna.Trial) -> float:
-        return _run_trial(trial, latent_dim, seeds, settings, submitter, queue)
+    def __poll_results(
+        self,
+        latent_dim: int,
+        trial_number: int,
+    ) -> dict[int, float]:
+        """Poll the messages queue for results from the given trial until all seeds have reported or too many collapses.
 
-    terminator = optuna.terminator.Terminator(optuna.terminator.EMMREvaluator())
-    callbacks = [optuna.terminator.TerminatorCallback(terminator)]
-    study.optimize(objective, n_trials=remaining, callbacks=callbacks)
+        Arguments:
+            latent_dim: The latent dimension for this trial (used to filter messages for this study).
+            trial_number: The Optuna trial number (used to filter messages for this trial).
 
-    completed = [t for t in study.trials if t.state == TrialState.COMPLETE]
-    if not completed:
-        logger.warning("[L=%d] No completed trials.", latent_dim)
-        return 0.0
+        Returns:
+            A list of accuracies reported by the seeds for this trial.
 
-    best = study.best_trial
-    logger.info(
-        "[L=%d] Best trial is #%d with medianaccuracy=%.4f, params=%s.",
-        latent_dim,
-        best.number,
-        best.value,
-        best.params,
-    )
-    return best.value if best.value is not None else 0.0
+        """
+        results: dict[int, float] = {}
+        collapses = 0
+        start = time.monotonic()
+
+        while len(results) + collapses < len(self.__seeds):
+            time.sleep(self.__settings.poll_interval)
+
+            if time.monotonic() - start > self.__settings.poll_timeout:
+                msg = "Timed out waiting for seed results."
+                raise TimeoutError(msg)
+
+            messages = self.__queue.pop(max_messages=len(self.__seeds))
+            for message in messages:
+                if message["trial_number"] != trial_number or message["latent_dim"] != latent_dim:
+                    continue
+
+                start = time.monotonic()  # reset timeout timer upon receiving a relevant message
+                seed = message["seed"]
+                message_type = message["type"]
+
+                if message_type == MessageType.STARTING:
+                    logger.debug("[L=%d][T=%d][S=%d] Job started.", latent_dim, trial_number, seed)
+
+                elif message_type == MessageType.SUCCESS:
+                    logger.info(
+                        "[L=%d][T=%d][S=%d] Job succeeded with accuracy=%.4f.",
+                        latent_dim,
+                        trial_number,
+                        seed,
+                        message["accuracy"],
+                    )
+                    results[seed] = message["accuracy"]
+
+                elif message_type == MessageType.COLLAPSE:
+                    collapses += 1
+                    logger.warning(
+                        "[L=%d][T=%d][S=%d] Job collapsed (%d total).",
+                        latent_dim,
+                        trial_number,
+                        seed,
+                        collapses,
+                    )
+                    if collapses > self.__settings.max_pruned_seeds:
+                        logger.warning(
+                            "[L=%d][T=%d][S=%d] Too many collapses, trial pruned.",
+                            latent_dim,
+                            trial_number,
+                            seed,
+                        )
+
+                        msg = f"More than {self.__settings.max_pruned_seeds} seeds collapsed (got {collapses})."
+                        raise optuna.TrialPruned(msg)
+
+                elif message_type == MessageType.ERROR:
+                    msg = f"Failed with error: {message.get('error', 'Unknown error')}"
+                    raise RuntimeError(msg)
+
+        return results
+
+    def cleanup(self) -> None:
+        """Clean up resources used by the launcher."""
+        self.__queue.destroy()
 
 
 def run_launcher(settings: LauncherSettings | None = None) -> None:
     """Run the launcher with the given settings (or defaults if None)."""
     settings = LauncherSettings() if settings is None else settings
-
-    submitter = TrialSubmitter(settings.batch_job_queue, settings.batch_job_definition, settings.region_name)
-    queue = MessagesQueue(settings.region_name)
-    queue.create(settings.launch_name)
-
-    seeds = _generate_seeds(settings.starter_seed, settings.n_seeds_per_trial)
-    logger.info("Generated %d seeds from starter seed %d.", len(seeds), settings.starter_seed)
+    launcher = Launcher(settings)
 
     try:
-        previous_best_accuracy: float | None = None
-        patience_counter = 0
-
-        for latent_dim in range(settings.latent_dim.min, settings.latent_dim.max + 1):
-            best_accuracy = _run_study(latent_dim, seeds, settings, submitter, queue)
-
-            if previous_best_accuracy is not None:
-                delta = best_accuracy - previous_best_accuracy
-                logger.info(
-                    "[L=%d] Accuracy delta vs previous: %+.4f (threshold: %f)",
-                    latent_dim,
-                    delta,
-                    settings.min_accuracy_delta,
-                )
-
-                if delta < settings.min_accuracy_delta:
-                    patience_counter += 1
-                    logger.info(
-                        "[L=%d] Accuracy did not improve sufficiently. Patience counter: %d.",
-                        latent_dim,
-                        patience_counter,
-                    )
-                    if patience_counter >= settings.latent_dim_patience:
-                        logger.info("[L=%d] Patience exhausted. Stopping search.", latent_dim)
-                        break
-                else:
-                    patience_counter = 0
-
-            previous_best_accuracy = best_accuracy
+        launcher.launch()
     finally:
-        queue.destroy()
+        launcher.cleanup()
 
 
 if __name__ == "__main__":

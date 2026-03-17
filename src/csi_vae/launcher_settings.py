@@ -25,8 +25,8 @@ class LauncherSettings(BaseSettings):
 
     launch_name: str = "default"
     """Name of this launch, used for naming the Optuna study and AWS Batch jobs."""
-    journal_dir: str | None = f"out/{launch_name}"
-    """Path to the Optuna journal dir for this study."""
+    storage_dir: str | None = f"out/{launch_name}"
+    """Path to the Optuna storage dir for this study. If None, the study will be created without persistent storage."""
     n_trials: int = 100
     """Total number of Optuna trials to run."""
     starter_seed: int = 42
