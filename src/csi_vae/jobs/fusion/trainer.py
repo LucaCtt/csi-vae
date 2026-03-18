@@ -126,8 +126,8 @@ class Trainer:
             total_metrics[1] += epoch_accuracy
             epochs_run += 1
 
-            _, val_accuracy = self.__run_val_epoch()
-            self.__early_stopping.step_accuracy(val_accuracy)
+            val_loss, _ = self.__run_val_epoch()
+            self.__early_stopping.step_loss(val_loss)
             if self.__early_stopping.should_stop:
                 break
 

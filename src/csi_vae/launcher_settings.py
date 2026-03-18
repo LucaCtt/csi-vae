@@ -52,7 +52,7 @@ class LauncherSettings(BaseSettings):
     latent_dim_patience: int = 2
     """Number of consecutive latent dimensions to allow without improvement before stopping the study."""
 
-    batch_size: ParamRange[int] = ParamRange(min=64, max=256)
+    batch_size: ParamRange[int] = ParamRange(min=32, max=128)
     lr: ParamRange[float] = ParamRange(min=1e-3, max=3e-2)
     kl_max: ParamRange[float] = ParamRange(min=1.0, max=20.0)
     latent_dim: ParamRange[int] = ParamRange(min=1, max=10)

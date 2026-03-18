@@ -54,7 +54,7 @@ def _make_dataloader(ds: Dataset, batch_size: int, shuffle: bool, seed: int) -> 
         ds,
         batch_size=batch_size,
         shuffle=shuffle,
-        num_workers=1,
+        num_workers=8, # This likely needs some tuning based on the instance type and dataset size
         persistent_workers=True,
         pin_memory=True,
         generator=torch.Generator().manual_seed(seed),
