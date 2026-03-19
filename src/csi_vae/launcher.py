@@ -217,8 +217,6 @@ class Launcher:
 
         try:
             results = self.__poll_results(latent_dim, trial.number)
-        except optuna.TrialPruned:
-            raise
         except Exception:
             for job_id in jobs:
                 self.__submitter.terminate(job_id)
