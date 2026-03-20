@@ -23,7 +23,7 @@ class _AntennaEncoder(nn.Module):
         self,
         window_size: int,
         n_subcarriers: int,
-        latent_dim: int,
+        n_gaussians: int,
         channels: int,
         conv_layers: ConvLayerSpec,
     ) -> None:
@@ -32,7 +32,7 @@ class _AntennaEncoder(nn.Module):
         Arguments:
             window_size: The size of the time window for CSI input.
             n_subcarriers: The number of subcarriers in the CSI input.
-            latent_dim: The dimensionality of the latent space.
+            n_gaussians: The dimensionality of the latent space.
             channels: The number of channels in the convolutional layers.
             conv_layers: A list of tuples specifying the convolutional layers (kernel size and stride).
 
@@ -55,8 +55,8 @@ class _AntennaEncoder(nn.Module):
         _, flat_dim = self.get_shapes()
 
         # Linear heads for Gaussian parameters
-        self.__mu = nn.Linear(flat_dim, latent_dim)
-        self.__logvar = nn.Linear(flat_dim, latent_dim)
+        self.__mu = nn.Linear(flat_dim, n_gaussians)
+        self.__logvar = nn.Linear(flat_dim, n_gaussians)
 
     @torch.no_grad()
     def get_shapes(self) -> tuple[tuple, int]:
@@ -81,8 +81,8 @@ class _AntennaEncoder(nn.Module):
             x: Input tensor of shape (batch_size, window_size, n_subcarriers) for one antenna.
 
         Returns:
-            mu: Tensor of shape (batch_size, antenna_latent_dim) representing the mean of the latent distribution.
-            logvar: Tensor of shape (batch_size, antenna_latent_dim)
+            mu: Tensor of shape (batch_size, antenna_n_gaussians) representing the mean of the latent distribution.
+            logvar: Tensor of shape (batch_size, antenna_n_gaussians)
 
         """
         x = x.unsqueeze(1)  # Add channel dimension
@@ -97,7 +97,7 @@ class _AntennaDecoder(nn.Module):
         self,
         latent_feat_shape: tuple,
         flat_dim: int,
-        latent_dim: int,
+        n_gaussians: int,
         channels: int,
         conv_layers: ConvLayerSpec,
     ) -> None:
@@ -106,7 +106,7 @@ class _AntennaDecoder(nn.Module):
         Arguments:
             latent_feat_shape: The shape of the feature map before flattening in the encoder (Channels, H, W).
             flat_dim: The total number of features when the feature map is flattened.
-            latent_dim: The dimensionality of the latent space.
+            n_gaussians: The dimensionality of the latent space.
             channels: The number of channels in the convolutional layers.
             conv_layers: A list of tuples specifying the convolutional layers (kernel size and stride)
 
@@ -114,7 +114,7 @@ class _AntennaDecoder(nn.Module):
         super().__init__()
 
         self.__latent_feat_shape = latent_feat_shape
-        self.__fc = nn.Linear(latent_dim, flat_dim)
+        self.__fc = nn.Linear(n_gaussians, flat_dim)
 
         deconv_layers: list[nn.Module] = []
         reversed_specs = list(reversed(conv_layers))
@@ -131,7 +131,7 @@ class _AntennaDecoder(nn.Module):
         """Decode the latent vector into a CSI window.
 
         Arguments:
-            z: Input tensor of shape (batch_size, antenna_latent_dim) representing the latent vector for one antenna.
+            z: Input tensor of shape (batch_size, antenna_n_gaussians) representing the latent vector for one antenna.
 
         Returns:
             recon: Tensor of shape (batch_size, window_size, n_subcarriers)
@@ -150,7 +150,7 @@ class SingleAntenna(nn.Module):
         self,
         window_size: int,
         n_subcarriers: int,
-        latent_dim: int,
+        n_gaussians: int,
         channels: int,
         conv_layers: ConvLayerSpec,
     ) -> None:
@@ -159,16 +159,16 @@ class SingleAntenna(nn.Module):
         Arguments:
             window_size: The size of the time window for CSI input.
             n_subcarriers: The number of subcarriers in the CSI input.
-            latent_dim: The dimensionality of the latent space.
+            n_gaussians: The dimensionality of the latent space.
             channels: The number of channels in the convolutional layers.
             conv_layers: A list of tuples specifying the convolutional layers (kernel size and stride).
 
         """
         super().__init__()
 
-        self.__encoder = _AntennaEncoder(window_size, n_subcarriers, latent_dim, channels, conv_layers)
+        self.__encoder = _AntennaEncoder(window_size, n_subcarriers, n_gaussians, channels, conv_layers)
         latent_feat_shape, flat_dim = self.__encoder.get_shapes()
-        self.__decoder = _AntennaDecoder(latent_feat_shape, flat_dim, latent_dim, channels, conv_layers)
+        self.__decoder = _AntennaDecoder(latent_feat_shape, flat_dim, n_gaussians, channels, conv_layers)
 
     def __reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         """Reparameterization trick to sample from the Gaussian distribution defined by mu and logvar."""
@@ -195,8 +195,8 @@ class SingleAntenna(nn.Module):
 
         Returns:
             recon: Tensor of shape (batch_size, window_size, n_subcarriers) representing the reconstructed input.
-            mu: Tensor of shape (batch_size, latent_dim) representing the mean of the latent vector.
-            logvar: Tensor of shape (batch_size, latent_dim) representing the log-variance of the latent.
+            mu: Tensor of shape (batch_size, n_gaussians) representing the mean of the latent vector.
+            logvar: Tensor of shape (batch_size, n_gaussians) representing the log-variance of the latent.
 
         """
         mu, logvar = self.encode(x)

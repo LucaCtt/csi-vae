@@ -49,13 +49,13 @@ class LauncherSettings(BaseSettings):
     """Seconds to wait between polling AWS Batch for job status."""
     poll_timeout: int = 60 * 60  # 1 hour
     """Maximum seconds to wait for a batch of trials to complete before giving up."""
-    latent_dim_patience: int = 2
-    """Number of consecutive latent dimensions to allow without improvement before stopping the study."""
+    n_gaussians_patience: int = 2
+    """Number of consecutive studies to allow without improvement before stopping the launch."""
 
     batch_size: ParamRange[int] = ParamRange(min=32, max=128)
     lr: ParamRange[float] = ParamRange(min=1e-3, max=3e-2)
     kl_max: ParamRange[float] = ParamRange(min=1.0, max=20.0)
-    latent_dim: ParamRange[int] = ParamRange(min=1, max=10)
+    n_gaussians: ParamRange[int] = ParamRange(min=1, max=10)
     conv_channels: ParamRange[int] = ParamRange(min=32, max=64)
     conv_layers_spec: ParamCategorical[int] = ParamCategorical(values=[*range(len(CONV_SPECS))])
     n_fusion_layers: ParamRange[int] = ParamRange(min=1, max=3)

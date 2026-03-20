@@ -84,7 +84,7 @@ def _train_and_eval(settings: JobSettings) -> tuple[float, float]:
         gaussian = vae.SingleAntenna(
             settings.window_size,
             settings.n_subcarriers,
-            settings.latent_dim,
+            settings.n_gaussians,
             settings.conv_channels,
             vae.CONV_SPECS[settings.conv_layers_spec],
         )
@@ -111,7 +111,7 @@ def _train_and_eval(settings: JobSettings) -> tuple[float, float]:
     full_train_dl = _make_dataloader(full_train_ds, settings.batch_size, shuffle=True, seed=settings.seed)
     full_val_dl = _make_dataloader(full_val_ds, settings.batch_size, shuffle=False, seed=settings.seed)
 
-    delayed_fusion = fusion.Delayed(gaussians, settings.latent_dim, settings.n_activities, settings.n_fusion_layers)
+    delayed_fusion = fusion.Delayed(gaussians, settings.n_gaussians, settings.n_activities, settings.n_fusion_layers)
     delayed_fusion.compile(fullgraph=True)
 
     trainer = fusion.Trainer(
@@ -140,10 +140,10 @@ def run_job(settings: JobSettings | None = None) -> None:
     settings = JobSettings() if settings is None else settings
     _init_rng(settings.seed)
 
-    logger.addHandler(StreamHandler(settings.latent_dim, settings.trial_number, settings.seed))
+    logger.addHandler(StreamHandler(settings.n_gaussians, settings.trial_number, settings.seed))
     if settings.queue_url:
         queue = MessagesQueue.from_url(settings.queue_url, settings.region_name)
-        logger.addHandler(QueueHandler(queue, settings.latent_dim, settings.trial_number, settings.seed))
+        logger.addHandler(QueueHandler(queue, settings.n_gaussians, settings.trial_number, settings.seed))
 
     logger.info({"type": MessageType.STARTING})
 

@@ -36,7 +36,7 @@ def _build_fc(in_dim: int, out_dim: int, n_layers: int) -> nn.Sequential:
 class Delayed(nn.Module):
     """Delayed fusion module for multi-antenna CSI data."""
 
-    def __init__(self, antennas: list[SingleAntenna], latent_dim: int, n_activities: int, n_layers: int) -> None:
+    def __init__(self, antennas: list[SingleAntenna], n_gaussians: int, n_activities: int, n_layers: int) -> None:
         """Initialize the delayed fusion module."""
         super().__init__()
 
@@ -45,8 +45,8 @@ class Delayed(nn.Module):
             param.requires_grad = False
 
         self.__fc = nn.Sequential(
-            nn.LayerNorm(latent_dim * 2 * len(antennas)),
-            _build_fc(latent_dim * 2 * len(antennas), n_activities, n_layers),
+            nn.LayerNorm(n_gaussians * 2 * len(antennas)),
+            _build_fc(n_gaussians * 2 * len(antennas), n_activities, n_layers),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

@@ -43,8 +43,8 @@ class JobSettings(BaseSettings):
     """Learning rate for training the autoencoder."""
     kl_max: float = 2
     """Maximum weight for the KL divergence term during annealing."""
-    latent_dim: int = 2
-    """Dimensionality of the latent space in the autoencoder."""
+    n_gaussians: int = 2
+    """Number of Gaussians to be produced by the autoencoder."""
     conv_channels: int = 32
     """Number of channels in the convolutional layers of the autoencoder."""
     conv_layers_spec: int = 0

@@ -23,9 +23,9 @@ def _timestamp_to_iso(timestamp: float) -> str:
 class _BaseJobHandler(logging.Handler):
     """Base handler that enriches log records with job metadata."""
 
-    def __init__(self, latent_dim: int, trial_number: int, seed: int) -> None:
+    def __init__(self, n_gaussians: int, trial_number: int, seed: int) -> None:
         super().__init__()
-        self._latent_dim = latent_dim
+        self._n_gaussians = n_gaussians
         self._trial_number = trial_number
         self._seed = seed
 
@@ -37,7 +37,7 @@ class _BaseJobHandler(logging.Handler):
         return {
             **message,
             "date_time": _timestamp_to_iso(record.created),
-            "latent_dim": self._latent_dim,
+            "n_gaussians": self._n_gaussians,
             "trial_number": self._trial_number,
             "seed": self._seed,
         }
@@ -64,9 +64,9 @@ class StreamHandler(_BaseJobHandler, logging.StreamHandler):
 class QueueHandler(_BaseJobHandler, logging.Handler):
     """Logging handler that sends enriched log records to an AWS SQS queue."""
 
-    def __init__(self, queue: MessagesQueue, latent_dim: int, trial_number: int, seed: int) -> None:
+    def __init__(self, queue: MessagesQueue, n_gaussians: int, trial_number: int, seed: int) -> None:
         """Initialize the QueueHandler with the given queue and trial metadata."""
-        super().__init__(latent_dim, trial_number, seed)
+        super().__init__(n_gaussians, trial_number, seed)
         self.__queue = queue
 
     def emit(self, record: logging.LogRecord) -> None:

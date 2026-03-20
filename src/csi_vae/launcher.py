@@ -121,50 +121,50 @@ class Launcher:
         best_accuracy: float = float("-inf")
         patience_counter = 0
 
-        for latent_dim in range(self.__settings.latent_dim.min, self.__settings.latent_dim.max + 1):
-            accuracy = self.__run_study(latent_dim)
+        for n_gaussians in range(self.__settings.n_gaussians.min, self.__settings.n_gaussians.max + 1):
+            accuracy = self.__run_study(n_gaussians)
 
             delta = accuracy - best_accuracy
             if delta < self.__settings.min_accuracy_delta:
-                logger.info("[L=%d] Accuracy did not improve sufficiently.", latent_dim)
+                logger.info("[L=%d] Accuracy did not improve sufficiently.", n_gaussians)
 
                 patience_counter += 1
-                if patience_counter >= self.__settings.latent_dim_patience:
-                    logger.info("[L=%d] Patience exhausted. Stopping search.", latent_dim)
+                if patience_counter >= self.__settings.n_gaussians_patience:
+                    logger.info("[L=%d] Patience exhausted. Stopping search.", n_gaussians)
                     break
             else:
-                logger.info("[L=%d] Accuracy improved by %.4f.", latent_dim, delta)
+                logger.info("[L=%d] Accuracy improved by %.4f.", n_gaussians, delta)
                 patience_counter = 0
                 best_accuracy = accuracy
 
-    def __run_study(self, latent_dim: int) -> float:
-        """Run all trials for a given latent_dim. Returns the best accuracy achieved.
+    def __run_study(self, n_gaussians: int) -> float:
+        """Run all trials for a given n_gaussians. Returns the best accuracy achieved.
 
         Arguments:
-            latent_dim: The latent dimension to run the study for.
+            n_gaussians: The number of Gaussians to run the study for.
 
         Returns:
             The best median accuracy achieved across all trials for this latent dimension.
 
         """
-        study_name = f"l{latent_dim}"
+        study_name = f"l{n_gaussians}"
         study = _make_study(study_name, self.__settings.storage_dir, self.__settings.starter_seed)
 
         # Check how many trials are already complete to avoid re-running them if the launcher is restarted
         already_done = sum(1 for t in study.trials if t.state == TrialState.COMPLETE)
         remaining = self.__settings.n_trials - already_done
         if remaining <= 0:
-            logger.info("[L=%d] Study already complete, skipping.", latent_dim)
+            logger.info("[L=%d] Study already complete, skipping.", n_gaussians)
             return study.best_value
 
-        logger.info("[L=%d] Starting study '%s' (%d trials remaining).", latent_dim, study_name, remaining)
+        logger.info("[L=%d] Starting study '%s' (%d trials remaining).", n_gaussians, study_name, remaining)
 
         emmr_evaluator = optuna.terminator.EMMREvaluator()
         median_error_evaluator = optuna.terminator.MedianErrorEvaluator(emmr_evaluator)
         terminator = optuna.terminator.Terminator(emmr_evaluator, median_error_evaluator)
         callbacks = [optuna.terminator.TerminatorCallback(terminator)]
         study.optimize(
-            lambda trial: self.__run_trial(trial, latent_dim),
+            lambda trial: self.__run_trial(trial, n_gaussians),
             n_trials=remaining,
             callbacks=callbacks,
             catch=(optuna.exceptions.TrialPruned, TimeoutError, RuntimeError),
@@ -173,19 +173,19 @@ class Launcher:
         # After optimization, log the best trial and return its value
         completed = [t for t in study.trials if t.state == TrialState.COMPLETE]
         if not completed:
-            logger.warning("[L=%d] No completed trials.", latent_dim)
+            logger.warning("[L=%d] No completed trials.", n_gaussians)
             return 0.0
 
         logger.info(
             "[L=%d] Best trial is #%d with median_accuracy=%.4f, params=%s.",
-            latent_dim,
+            n_gaussians,
             study.best_trial.number,
             study.best_trial.value,
             study.best_trial.params,
         )
         return study.best_trial.value if study.best_trial.value is not None else 0.0
 
-    def __run_trial(self, trial: optuna.Trial, latent_dim: int) -> float:
+    def __run_trial(self, trial: optuna.Trial, n_gaussians: int) -> float:
         """Run a single Optuna trial."""
         params = _get_params(trial, self.__settings)
 
@@ -194,29 +194,29 @@ class Launcher:
             trial_settings = JobSettings(
                 region_name=self.__settings.region_name,
                 bucket_name=self.__settings.bucket_name,
-                bucket_key=f"{self.__settings.launch_name}/l{latent_dim}/t{trial.number}/s{seed}",
+                bucket_key=f"{self.__settings.launch_name}/l{n_gaussians}/t{trial.number}/s{seed}",
                 queue_url=self.__queue.url,
                 trial_number=trial.number,
-                latent_dim=latent_dim,
+                n_gaussians=n_gaussians,
                 seed=seed,
                 **params,  # pyright: ignore[reportArgumentType]
             )
 
-            job_name = f"{self.__settings.launch_name}_l{latent_dim}_t{trial.number}_s{seed}"
+            job_name = f"{self.__settings.launch_name}_l{n_gaussians}_t{trial.number}_s{seed}"
             job_id = self.__submitter.submit(job_name, trial_settings.model_dump())
             jobs.append(job_id)
-            logger.debug("[L=%d][T=%d][S=%d] Submitted job %s.", latent_dim, trial.number, seed, job_id)
+            logger.debug("[L=%d][T=%d][S=%d] Submitted job %s.", n_gaussians, trial.number, seed, job_id)
 
         logger.info(
             "[L=%d][T=%d] Submitted %d jobs with params=%s.",
-            latent_dim,
+            n_gaussians,
             trial.number,
             len(self.__seeds),
             trial.params,
         )
 
         try:
-            results = self.__poll_results(latent_dim, trial.number)
+            results = self.__poll_results(n_gaussians, trial.number)
         except Exception:
             for job_id in jobs:
                 self.__submitter.terminate(job_id)
@@ -230,7 +230,7 @@ class Launcher:
 
         logger.info(
             "[L=%d][T=%d] Trial finished with median_accuracy=%.4f.",
-            latent_dim,
+            n_gaussians,
             trial.number,
             median_accuracy,
         )
@@ -239,13 +239,13 @@ class Launcher:
 
     def __poll_results(
         self,
-        latent_dim: int,
+        n_gaussians: int,
         trial_number: int,
     ) -> dict[int, float]:
         """Poll the messages queue for results from the given trial until all seeds have reported or too many collapses.
 
         Arguments:
-            latent_dim: The latent dimension for this trial (used to filter messages for this study).
+            n_gaussians: The number of Gaussians for this trial (used to filter messages for this study).
             trial_number: The Optuna trial number (used to filter messages for this trial).
 
         Returns:
@@ -265,7 +265,7 @@ class Launcher:
 
             messages = self.__queue.pop(max_messages=len(self.__seeds))
             for message in messages:
-                if message["trial_number"] != trial_number or message["latent_dim"] != latent_dim:
+                if message["trial_number"] != trial_number or message["n_gaussians"] != n_gaussians:
                     continue
 
                 start = time.monotonic()  # reset timeout timer upon receiving a relevant message
@@ -273,12 +273,12 @@ class Launcher:
                 message_type = message["type"]
 
                 if message_type == MessageType.STARTING:
-                    logger.debug("[L=%d][T=%d][S=%d] Job started.", latent_dim, trial_number, seed)
+                    logger.debug("[L=%d][T=%d][S=%d] Job started.", n_gaussians, trial_number, seed)
 
                 elif message_type == MessageType.SUCCESS:
                     logger.info(
                         "[L=%d][T=%d][S=%d] Job succeeded with accuracy=%.4f.",
-                        latent_dim,
+                        n_gaussians,
                         trial_number,
                         seed,
                         message["accuracy"],
@@ -289,7 +289,7 @@ class Launcher:
                     collapses += 1
                     logger.warning(
                         "[L=%d][T=%d][S=%d] Job collapsed (%d total).",
-                        latent_dim,
+                        n_gaussians,
                         trial_number,
                         seed,
                         collapses,
@@ -297,7 +297,7 @@ class Launcher:
                     if collapses > self.__settings.max_pruned_seeds:
                         logger.warning(
                             "[L=%d][T=%d][S=%d] Too many collapses, trial pruned.",
-                            latent_dim,
+                            n_gaussians,
                             trial_number,
                             seed,
                         )
