@@ -14,9 +14,9 @@ class TrainerParams:
 
     lr: float
     """Learning rate for the optimizer."""
-    patience: int
+    early_stop_patience: int
     """Early-stopping patience in epochs."""
-    warmup_epochs: int
+    early_stop_warmup_epochs: int
     """Number of epochs to warm up the learning rate."""
 
 
@@ -48,7 +48,7 @@ class Trainer:
         self.__criterion = nn.CrossEntropyLoss()
         self.__optimizer = torch.optim.Adam(self.__model.parameters(), lr=params.lr)
         self.__scaler = torch.GradScaler(device=self.__device.type)
-        self.__early_stopping = EarlyStopping(self.__model, params.patience, params.warmup_epochs)
+        self.__early_stopping = EarlyStopping(self.__model, params.early_stop_patience, params.early_stop_warmup_epochs)
 
         self.__len_train = len(train_dl)
         self.__len_val = len(val_dl)
@@ -87,10 +87,10 @@ class Trainer:
         return metrics[0], metrics[1]
 
     @torch.no_grad()
-    def __run_val_epoch(self) -> tuple[torch.Tensor, torch.Tensor]:
+    def __run_val_epoch(self) -> torch.Tensor:
         self.__model.eval()
 
-        metrics = torch.zeros(2, device=self.__device)
+        total_loss = torch.tensor(0.0, device=self.__device)
 
         for x_cpu, y_cpu in self.__val_dl:
             x, y = x_cpu.to(self.__device, non_blocking=True), y_cpu.to(self.__device, non_blocking=True)
@@ -99,12 +99,9 @@ class Trainer:
                 logits = self.__model(x)
                 loss = self.__criterion(logits, y)
 
-            accuracy = (logits.argmax(dim=1) == y).float().mean()
-            metrics[0] += loss.detach()
-            metrics[1] += accuracy.detach()
+            total_loss += loss.detach()
 
-        metrics /= self.__len_val
-        return metrics[0], metrics[1]
+        return total_loss / self.__len_val
 
     def train(self, epochs: int) -> tuple[float, float]:
         """Train the model, restoring best weights on early stopping.
@@ -126,8 +123,8 @@ class Trainer:
             total_metrics[1] += epoch_accuracy
             epochs_run += 1
 
-            val_loss, _ = self.__run_val_epoch()
-            self.__early_stopping.step_loss(val_loss)
+            val_loss = self.__run_val_epoch()
+            self.__early_stopping.step(val_loss)
             if self.__early_stopping.should_stop:
                 break
 

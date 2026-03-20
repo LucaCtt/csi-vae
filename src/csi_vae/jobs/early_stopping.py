@@ -29,7 +29,6 @@ class EarlyStopping:
         self.__model = model
         self.__patience = patience
         self.__warmup_remaining = warmup_epochs
-        self.__best_accuracy: torch.Tensor = torch.tensor(float("-inf"))
         self.__best_loss: torch.Tensor = torch.tensor(float("inf"))
         self.__plateau_counter = 0
         self.__best_weights: dict[str, torch.Tensor] | None = None
@@ -43,24 +42,7 @@ class EarlyStopping:
 
         return self.__plateau_counter >= self.__patience
 
-    def step_accuracy(self, val_accuracy: torch.Tensor, delta: float = 0) -> None:
-        """Step using accuracy (higher is better).
-
-        Arguments:
-            val_accuracy: Validation accuracy from the most recent epoch.
-            delta: Minimum improvement required to reset the plateau counter.
-
-
-        """
-        if self.__tick_warmup():
-            return
-
-        improved = val_accuracy > self.__best_accuracy + delta
-        self.__update(improved)
-        if improved:
-            self.__best_accuracy = val_accuracy
-
-    def step_loss(self, val_loss: torch.Tensor, delta: float = 0) -> None:
+    def step(self, val_loss: torch.Tensor, delta: float = 0) -> None:
         """Step using loss (lower is better).
 
         Arguments:
@@ -71,10 +53,16 @@ class EarlyStopping:
         if self.__tick_warmup():
             return
 
-        improved = val_loss < self.__best_loss - delta
-        self.__update(improved)
-        if improved:
+        if val_loss < self.__best_loss - delta:
+            self.__plateau_counter = 0
+
+            # Clone tensors and keep them on GPU.
+            # This may be a problem for GPUs with very limited memory,
+            # but avoids unnecessary CPU-GPU transfers on restore.
+            self.__best_weights = {k: v.clone() for k, v in self.__model.state_dict().items()}
             self.__best_loss = val_loss
+        else:
+            self.__plateau_counter += 1
 
     def __tick_warmup(self) -> bool:
         """Decrement warmup counter. Returns True if still in warmup."""
@@ -83,17 +71,6 @@ class EarlyStopping:
             return True
 
         return False
-
-    def __update(self, improved: torch.Tensor) -> None:
-        if improved:
-            self.__plateau_counter = 0
-
-            # Clone tensors and keep them on GPU.
-            # This may be a problem for GPUs with very limited memory,
-            # but avoids unnecessary CPU-GPU transfers on restore.
-            self.__best_weights = {k: v.clone() for k, v in self.__model.state_dict().items()}
-        else:
-            self.__plateau_counter += 1
 
     def restore_best_weights(self) -> None:
         """Load the best recorded weights back into the model."""

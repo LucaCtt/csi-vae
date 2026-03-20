@@ -56,6 +56,6 @@ class LauncherSettings(BaseSettings):
     lr: ParamRange[float] = ParamRange(min=1e-3, max=3e-2)
     kl_max: ParamRange[float] = ParamRange(min=1.0, max=20.0)
     latent_dim: ParamRange[int] = ParamRange(min=1, max=10)
-    conv_channels: ParamRange[int] = ParamRange(min=24, max=40)
+    conv_channels: ParamRange[int] = ParamRange(min=32, max=64)
     conv_layers_spec: ParamCategorical[int] = ParamCategorical(values=[*range(len(CONV_SPECS))])
     n_fusion_layers: ParamRange[int] = ParamRange(min=1, max=3)

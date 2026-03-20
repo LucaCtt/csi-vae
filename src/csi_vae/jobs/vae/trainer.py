@@ -28,10 +28,12 @@ class TrainerParams:
 
     lr: float
     """Learning rate for the optimizer."""
-    patience: int
-    """Patience for both early stopping and collapse detection."""
-    warmup_epochs: int
+    early_stop_patience: int
+    """Patience for early stopping."""
+    early_stop_warmup_epochs: int
     """Number of epochs to warm up before starting early stopping."""
+    collapse_patience: int
+    """Patience for detecting posterior collapse."""
     kl_max: float
     """Maximum KL divergence weight."""
 
@@ -64,8 +66,12 @@ class Trainer:
         self.__params = params
         self.__optimizer = torch.optim.Adam(self.__gaussian.parameters(), lr=params.lr)
         self.__scaler = torch.GradScaler(device=self.__device.type)
-        self.__early_stopping = EarlyStopping(self.__gaussian, params.patience, params.warmup_epochs)
-        self.__collapse_detector = CollapseDetector(params.patience)
+        self.__early_stopping = EarlyStopping(
+            self.__gaussian,
+            params.early_stop_patience,
+            params.early_stop_warmup_epochs,
+        )
+        self.__collapse_detector = CollapseDetector(params.collapse_patience)
 
         self.__len_train = len(train_dl)
         self.__len_val = len(val_dl)
@@ -99,25 +105,21 @@ class Trainer:
         return metrics[0], metrics[1], metrics[2]
 
     @torch.no_grad()
-    def __run_val_epoch(self, kl_weight: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def __run_val_epoch(self, kl_weight: float) -> torch.Tensor:
         self.__gaussian.eval()
 
-        metrics = torch.zeros(3, device=self.__device)
+        total_loss = torch.tensor(0.0, device=self.__device)
 
         for x_true_cpu, _ in self.__val_dl:
             x_true = x_true_cpu.to(self.__device, non_blocking=True)
 
             with torch.autocast(device_type=self.__device.type, dtype=torch.float16):
                 x_recon, mu, logvar = self.__gaussian(x_true)
-                loss, recon_loss, kl_loss = vae.loss(x_recon, x_true, mu, logvar, kl_weight)
+                loss, _, _ = vae.loss(x_recon, x_true, mu, logvar, kl_weight)
 
-            metrics[0] += loss
-            metrics[1] += recon_loss
-            metrics[2] += kl_loss
+            total_loss += loss.detach()
 
-        metrics /= self.__len_val
-
-        return metrics[0], metrics[1], metrics[2]
+        return total_loss / self.__len_val
 
     def train(self, epochs: int) -> tuple[float, float, float]:
         """Train the VAE model for a specified number of epochs.
@@ -136,7 +138,7 @@ class Trainer:
         for _ in range(epochs):
             epoch_loss, epoch_recon_loss, epoch_kl_loss = self.__run_epoch(annealer.weight)
 
-            # We (improperly) consider explosions as a form of collapse
+            # We (improperly) consider dead tensors as a form of collapse
             if _is_dead(torch.tensor([epoch_loss, epoch_recon_loss, epoch_kl_loss])):
                 raise PosteriorCollapseError
 
@@ -149,8 +151,8 @@ class Trainer:
             total_metrics[2] += epoch_kl_loss
             epochs_run += 1
 
-            val_loss, _, _ = self.__run_val_epoch(annealer.weight)
-            self.__early_stopping.step_loss(val_loss)
+            val_loss = self.__run_val_epoch(annealer.weight)
+            self.__early_stopping.step(val_loss)
             if self.__early_stopping.should_stop:
                 break
 

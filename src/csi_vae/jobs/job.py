@@ -95,10 +95,11 @@ def _train_and_eval(settings: JobSettings) -> tuple[float, float]:
             antenna_train_dl,
             antenna_val_dl,
             vae.TrainerParams(
-                settings.lr,
-                settings.patience,
-                settings.warmup_epochs,
-                settings.kl_max,
+                lr=settings.lr,
+                early_stop_patience=settings.early_stop_patience,
+                early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
+                collapse_patience=settings.collapse_patience,
+                kl_max=settings.kl_max,
             ),
         )
         _, _, kl_loss = trainer.train(settings.n_epochs)
@@ -118,9 +119,9 @@ def _train_and_eval(settings: JobSettings) -> tuple[float, float]:
         full_train_dl,
         full_val_dl,
         fusion.TrainerParams(
-            settings.lr,
-            settings.patience,
-            settings.warmup_epochs,
+            lr=settings.lr,
+            early_stop_patience=settings.early_stop_patience,
+            early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
         ),
     )
     trainer.train(settings.n_epochs)

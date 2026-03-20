@@ -28,10 +28,12 @@ class JobSettings(BaseSettings):
     """Stride to use when segmenting the data (number of samples to skip between windows)."""
     n_epochs: int = 150
     """Number of epochs to train the autoencoder."""
-    patience: int = 20
-    """Number of epochs to wait before raising a collapse error or early stop."""
-    warmup_epochs: int = 10
+    early_stop_patience: int = 20
     """Number of epochs to wait before early stopping."""
+    early_stop_warmup_epochs: int = 10
+    """Number of epochs to wait before early stopping."""
+    collapse_patience: int = 5
+    """Number of epochs to wait before collapsing the latent space."""
 
     seed: int = 42
     """Random seed for reproducibility."""
