@@ -183,7 +183,7 @@ class Launcher:
             study.best_trial.value,
             study.best_trial.params,
         )
-        return study.best_trial.value if study.best_trial.value is not None else 0.0
+        return study.best_value
 
     def __run_trial(self, trial: optuna.Trial, n_gaussians: int) -> float:
         """Run a single Optuna trial."""
@@ -254,27 +254,27 @@ class Launcher:
         """
         results: dict[int, float] = {}
         collapses = 0
+        failures = 0
         start = time.monotonic()
 
-        while len(results) + collapses < len(self.__seeds):
+        while len(results) + collapses + failures < len(self.__seeds):
             time.sleep(self.__settings.poll_interval)
 
             if time.monotonic() - start > self.__settings.poll_timeout:
                 msg = "Timed out waiting for seed results."
                 raise TimeoutError(msg)
 
-            messages = self.__queue.pop(max_messages=len(self.__seeds))
+            messages = self.__queue.pop(
+                max_messages=len(self.__seeds),
+                filter_values={"trial_number": trial_number, "n_gaussians": n_gaussians},
+            )
             for message in messages:
-                if message["trial_number"] != trial_number or message["n_gaussians"] != n_gaussians:
-                    continue
-
                 start = time.monotonic()  # reset timeout timer upon receiving a relevant message
                 seed = message["seed"]
                 message_type = message["type"]
 
                 if message_type == MessageType.STARTING:
                     logger.debug("[L=%d][T=%d][S=%d] Job started.", n_gaussians, trial_number, seed)
-
                 elif message_type == MessageType.SUCCESS:
                     logger.info(
                         "[L=%d][T=%d][S=%d] Job succeeded with accuracy=%.4f.",
@@ -284,7 +284,6 @@ class Launcher:
                         message["accuracy"],
                     )
                     results[seed] = message["accuracy"]
-
                 elif message_type == MessageType.COLLAPSE:
                     collapses += 1
                     logger.warning(
@@ -294,19 +293,29 @@ class Launcher:
                         seed,
                         collapses,
                     )
-                    if collapses > self.__settings.max_pruned_seeds:
-                        logger.warning(
-                            "[L=%d][T=%d][S=%d] Too many collapses, trial pruned.",
-                            n_gaussians,
-                            trial_number,
-                            seed,
-                        )
-
-                        msg = f"More than {self.__settings.max_pruned_seeds} seeds collapsed (got {collapses})."
-                        raise optuna.TrialPruned(msg)
-
                 elif message_type == MessageType.ERROR:
-                    msg = f"Failed with error: {message.get('error', 'Unknown error')}"
+                    failures += 1
+                    logger.warning(
+                        "[L=%d][T=%d][S=%d] Job failed with error: %s (%d total).",
+                        n_gaussians,
+                        trial_number,
+                        seed,
+                        message["error"],
+                        failures,
+                    )
+
+                if failures + collapses > self.__settings.max_pruned_seeds:
+                    logger.error(
+                        "[L=%d][T=%d][S=%d] Too many failures.",
+                        n_gaussians,
+                        trial_number,
+                        seed,
+                    )
+
+                    if collapses > self.__settings.max_pruned_seeds:
+                        raise optuna.TrialPruned
+
+                    msg = f"More than {self.__settings.max_pruned_seeds} seeds failed or collapsed."
                     raise RuntimeError(msg)
 
         return results

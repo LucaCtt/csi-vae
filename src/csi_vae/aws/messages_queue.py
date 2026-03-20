@@ -66,11 +66,19 @@ class MessagesQueue:
         """
         self.__sqs.send_message(QueueUrl=self.url, MessageBody=json.dumps(item))
 
-    def pop(self, max_messages: int = 10) -> list[dict]:
+    def pop(
+        self,
+        max_messages: int = 10,
+        filter_values: dict | None = None,
+        delete_non_matching: bool = True,
+    ) -> list[dict]:
         """Pop up to max_messages messages, deleting each only after it is read.
 
         Arguments:
             max_messages: Maximum number of messages to retrieve.
+            filter_values: Optional dictionary of values to filter messages. Only messages for which
+                all keys match their corresponding values will be included in the results and deleted from the queue.
+            delete_non_matching: If True, messages that do not match the filter will also be deleted from the queue.
 
         Returns:
             List of decoded message bodies.
@@ -85,8 +93,12 @@ class MessagesQueue:
                 break
 
             for msg in messages:
-                results.append(json.loads(msg["Body"]))
-                self._delete(msg["ReceiptHandle"])
+                body = json.loads(msg["Body"])
+                if filter_values is None or all(body.get(k) == v for k, v in filter_values.items()):
+                    results.append(body)
+                    self._delete(msg["ReceiptHandle"])
+                elif delete_non_matching:
+                    self._delete(msg["ReceiptHandle"])
 
             remaining -= len(messages)
 
