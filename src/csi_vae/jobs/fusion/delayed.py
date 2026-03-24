@@ -44,10 +44,7 @@ class Delayed(nn.Module):
         for param in self.__antennas.parameters():
             param.requires_grad = False
 
-        self.__fc = nn.Sequential(
-            nn.LayerNorm(n_gaussians * 2 * len(antennas)),
-            _build_fc(n_gaussians * 2 * len(antennas), n_activities, n_layers),
-        )
+        self.__fc = _build_fc(n_gaussians * 2 * len(antennas), n_activities, n_layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the delayed fusion module.
