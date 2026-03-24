@@ -1,74 +1,28 @@
-# Optuna + AWS Batch: Autoencoder HPO
+# CSI-VAE
 
-## Prerequisites
+This repository contains the code for *insert paper citation here*.
 
-- PostgreSQL RDS instance (must be reachable from both your machine and AWS Batch VPC)
-- AWS Batch job queue + compute environment
-- ECR repository
+It is composed by a `launcher` that creates Optuna studies, which in turn create `jobs` that train a VAE on the CSI data and evaluates the performance of the trained model. The launcher is meant to run locally and be kept alive for the whole duration of the optimization process, while the jobs are run on AWS Batch.
 
-## Setup
+## Installation
 
-### 1. Create the Optuna DB
-
-```sql
-CREATE DATABASE optuna;
-```
-
-### 2. Build & push the Docker image
+To install the required dependencies, use `uv`:
 
 ```bash
-# Replace with your ECR URI
-ECR_URI=123456789.dkr.ecr.us-east-1.amazonaws.com/optuna-trial
-
-aws ecr get-login-password | docker login --username AWS --password-stdin $ECR_URI
-docker build -t $ECR_URI:latest .
-docker push $ECR_URI:latest
+uv sync --extra launcher
 ```
 
-### 3. Create a Batch Job Definition
-
-Key settings:
-- **Image**: your ECR URI
-- **vCPUs**: 2–4  |  **Memory**: 4096–8192 MB
-- **Job role**: IAM role with at minimum `AmazonECSTaskExecutionRolePolicy`
-- **Network**: same VPC/subnets as your RDS instance (or use a security group that allows port 5432)
-
-The container receives these env vars from the launcher (no need to bake them in):
-```
-OPTUNA_STORAGE
-OPTUNA_STUDY
-OPTUNA_TRIAL_ID
-```
-
-> **Tip**: Store the DB password in AWS Secrets Manager and inject it via the job definition's `secrets` field instead of passing it in plain text.
-
-### 4. Run the launcher
+To run a training job locally, run:
 
 ```bash
-pip install optuna boto3 psycopg2-binary
-
-python launcher.py \
-    --study my_ae_study \
-    --storage "postgresql+psycopg2://user:pass@your-rds-host:5432/optuna" \
-    --n-trials 20 \
-    --job-queue  my-batch-queue \
-    --job-def    optuna-trial:1 \
-    --region     us-east-1
+uv run python src/csi_vae/jobs/job.py
 ```
 
-## How it works
+## Acknowledgements
 
-```
-launcher.py
-  └─ study.ask()           ← Optuna samples params, assigns trial_id
-  └─ batch.submit_job()    ← passes trial_id + storage URL as env vars
-       └─ trial.py (container)
-            └─ study.optimize(objective, n_trials=1)
-                 └─ trains AE + classifier, returns accuracy
-                 └─ Optuna writes result back to RDS
-```
+The work is partially supported by the European Office of Aerospace ResearchDevelopment (EOARD) under award number FA8655-22-1-7017 and by the US DEVCOM Army Research Laboratory (ARL) under Cooperative Agreements #W911NF2220243 and #W911NF1720196. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the United States government.
 
-## Tune what's searched
+## Authors
 
-Edit the `objective()` function in `trial.py` — all `trial.suggest_*` calls
-define the search space.  The launcher and Batch wiring don't need to change.
+- Luca Cotti <luca.cotti@unibs.it>
+- Marco Cominelli <marco.cominelli@polimi.it>
