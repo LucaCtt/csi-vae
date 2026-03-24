@@ -39,6 +39,7 @@ launch = "csi_vae.launcher:run_launcher"
 [tool.ruff]
 line-length = 120
 target-version = "py314"
+extend-exclude = ["notebooks/**"]
 
 [tool.ruff.lint]
 select = [
@@ -48,15 +49,12 @@ ignore = [
     "D100",    # Missing docstring in public module
     "D104",    # Missing docstring in public package
     "D105",    # Missing docstring in magic method
-    "FBT001",  # Boolean-typed positional argument in function definition
-    "FBT002",  # Boolean-typed keyword argument in function definition
-    "FBT003",  # Boolean-typed variable annotation
     "D203",    # Incorrect blank line before class
     "D213",    # Multi line summary second line
-    "PLR0913", # Too many arguments in function definition
-    "TC001",
-    "TC002",
-    "TC003",
-    "UP037",
-    "S311",    # Standard pseudo-random generators are not suitable for cryptographic purposes
+    "FBT001",  # Boolean-typed positional argument in function definition
+    "FBT002",  # Boolean-typed keyword argument in function definition
+    "UP037",   # Remove quotes from type annotation
+    "TC001",   # Move application import into a type-checking block
+    "TC002",   # Move third-party import into a type-checking block
+    "TC003",   # Move standard library import into a type-checking block
 ]

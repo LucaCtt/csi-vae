@@ -36,7 +36,7 @@ def _generate_seeds(starter_seed: int, n_seeds: int) -> list[int]:
         A list of n_seeds integers to use as seeds for the trials.
 
     """
-    rng = random.Random(starter_seed)
+    rng = random.SystemRandom(starter_seed)
     return [rng.randint(0, 2**31 - 1) for _ in range(n_seeds)]
 
 
