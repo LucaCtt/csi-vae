@@ -45,8 +45,6 @@ class JobSettings(BaseSettings):
     """Maximum weight for the KL divergence term during annealing."""
     n_gaussians: int = 2
     """Number of Gaussians to be produced by the autoencoder."""
-    conv_channels: int = 32
-    """Number of channels in the convolutional layers of the autoencoder."""
     conv_layers_spec: int = 0
     """Index of the convolutional layers specification to use for the autoencoder."""
     n_fusion_layers: int = 2

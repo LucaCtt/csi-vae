@@ -91,7 +91,6 @@ def train_gaussians(
             settings.window_size,
             settings.n_subcarriers,
             settings.n_gaussians,
-            settings.conv_channels,
             vae.CONV_SPECS[settings.conv_layers_spec],
         )
         gaussian.compile(fullgraph=True)
