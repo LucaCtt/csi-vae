@@ -85,15 +85,10 @@ def _get_params(trial: optuna.Trial, settings: LauncherSettings) -> dict[str, st
     bs_exp_max = int(math.log2(settings.batch_size.max))
     batch_size = 2 ** trial.suggest_int("batch_size_exp", bs_exp_min, bs_exp_max)
 
-    cc_mult_min = settings.conv_channels.min // 8
-    cc_mult_max = settings.conv_channels.max // 8
-    conv_channels = 8 * trial.suggest_int("conv_channels_mult", cc_mult_min, cc_mult_max)
-
     return {
         "lr": lr,
         "kl_max": kl_max,
         "batch_size": batch_size,
-        "conv_channels": conv_channels,
         "conv_layers_spec": conv_layers_spec,
         "n_fusion_layers": n_fusion_layers,
     }

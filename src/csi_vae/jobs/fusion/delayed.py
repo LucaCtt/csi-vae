@@ -27,7 +27,7 @@ def _build_fc(in_dim: int, out_dim: int, n_layers: int) -> nn.Sequential:
     for i in range(n_layers):
         layers.append(nn.Linear(dims[i], dims[i + 1]))
         if i < n_layers - 1:
-            layers.append(nn.Dropout(p=0.1))
+            layers.append(nn.Dropout(p=0.2))
             layers.append(nn.GELU())
 
     return nn.Sequential(*layers)
