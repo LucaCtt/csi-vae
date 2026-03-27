@@ -79,6 +79,12 @@ def _get_params(trial: optuna.Trial, settings: LauncherSettings) -> dict[str, st
     lr = trial.suggest_float("lr", settings.lr.min, settings.lr.max, log=True)
     kl_max = trial.suggest_float("kl_max", settings.kl_max.min, settings.kl_max.max, log=True)
     n_fusion_layers = trial.suggest_int("n_fusion_layers", settings.n_fusion_layers.min, settings.n_fusion_layers.max)
+    fusion_dropout = trial.suggest_float(
+        "fusion_dropout",
+        settings.fusion_dropout.min,
+        settings.fusion_dropout.max,
+        step=0.1,
+    )
     conv_layers_spec = trial.suggest_categorical("conv_layers_spec", settings.conv_layers_spec.values)
 
     bs_exp_min = int(math.log2(settings.batch_size.min))
@@ -91,6 +97,7 @@ def _get_params(trial: optuna.Trial, settings: LauncherSettings) -> dict[str, st
         "batch_size": batch_size,
         "conv_layers_spec": conv_layers_spec,
         "n_fusion_layers": n_fusion_layers,
+        "fusion_dropout": fusion_dropout,
     }
 
 

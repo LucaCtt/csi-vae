@@ -58,3 +58,4 @@ class LauncherSettings(BaseSettings):
     n_gaussians: ParamRange[int] = ParamRange(min=1, max=10)
     conv_layers_spec: ParamCategorical[int] = ParamCategorical(values=[*range(len(CONV_SPECS))])
     n_fusion_layers: ParamRange[int] = ParamRange(min=1, max=3)
+    fusion_dropout: ParamRange[float] = ParamRange(min=0.0, max=0.3)

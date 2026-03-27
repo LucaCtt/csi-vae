@@ -135,7 +135,13 @@ def train_fusion(
     full_train_dl = make_dataloader(full_train_ds, settings.batch_size, shuffle=True, seed=settings.seed)
     full_val_dl = make_dataloader(full_val_ds, settings.batch_size, shuffle=False, seed=settings.seed)
 
-    delayed_fusion = fusion.Delayed(gaussians, settings.n_gaussians, settings.n_activities, settings.n_fusion_layers)
+    delayed_fusion = fusion.Delayed(
+        gaussians,
+        settings.n_gaussians,
+        settings.n_activities,
+        settings.n_fusion_layers,
+        settings.fusion_dropout,
+    )
     delayed_fusion.compile(fullgraph=True)
 
     trainer = fusion.Trainer(

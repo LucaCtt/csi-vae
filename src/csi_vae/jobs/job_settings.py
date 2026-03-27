@@ -31,7 +31,7 @@ class JobSettings(BaseSettings):
     early_stop_patience: int = 20
     """Number of epochs to wait before early stopping."""
     early_stop_warmup_epochs: int = 10
-    """Number of epochs to wait before early stopping."""
+    """Number of epochs to wait before starting to check for early stopping."""
     collapse_patience: int = 5
     """Number of epochs to wait before collapsing the latent space."""
 
@@ -49,3 +49,5 @@ class JobSettings(BaseSettings):
     """Index of the convolutional layers specification to use for the autoencoder."""
     n_fusion_layers: int = 2
     """Number of layers in the delayed fusion classifier."""
+    fusion_dropout: float = 0.2
+    """Dropout rate to use in the delayed fusion classifier."""

@@ -11,7 +11,7 @@ def _next_multiple_of_8(n: int) -> int:
     return math.ceil(n / 8) * 8
 
 
-def _build_fc(in_dim: int, out_dim: int, n_layers: int) -> nn.Sequential:
+def _build_fc(in_dim: int, out_dim: int, n_layers: int, dropout: float) -> nn.Sequential:
     """Build FC block with n_layers, keeping hidden dims as multiples of 8."""
     if n_layers == 1:
         return nn.Sequential(nn.Linear(in_dim, out_dim))
@@ -27,7 +27,8 @@ def _build_fc(in_dim: int, out_dim: int, n_layers: int) -> nn.Sequential:
     for i in range(n_layers):
         layers.append(nn.Linear(dims[i], dims[i + 1]))
         if i < n_layers - 1:
-            layers.append(nn.Dropout(p=0.2))
+            if dropout > 0:
+                layers.append(nn.Dropout(p=dropout))
             layers.append(nn.GELU())
 
     return nn.Sequential(*layers)
@@ -36,7 +37,14 @@ def _build_fc(in_dim: int, out_dim: int, n_layers: int) -> nn.Sequential:
 class Delayed(nn.Module):
     """Delayed fusion module for multi-antenna CSI data."""
 
-    def __init__(self, antennas: list[SingleAntenna], n_gaussians: int, n_activities: int, n_layers: int) -> None:
+    def __init__(
+        self,
+        antennas: list[SingleAntenna],
+        n_gaussians: int,
+        n_activities: int,
+        n_layers: int,
+        dropout: float,
+    ) -> None:
         """Initialize the delayed fusion module."""
         super().__init__()
 
@@ -44,7 +52,7 @@ class Delayed(nn.Module):
         for param in self.__antennas.parameters():
             param.requires_grad = False
 
-        self.__fc = _build_fc(n_gaussians * 2 * len(antennas), n_activities, n_layers)
+        self.__fc = _build_fc(n_gaussians * 2 * len(antennas), n_activities, n_layers, dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the delayed fusion module.
