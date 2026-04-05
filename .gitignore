@@ -13,3 +13,6 @@ wheels/
 # Editor files
 .vscode/
 .idea/
+
+weights/
+weights.zip
