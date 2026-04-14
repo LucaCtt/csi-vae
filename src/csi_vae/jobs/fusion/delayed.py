@@ -5,6 +5,7 @@ from torch import nn
 
 from csi_vae.jobs.vae.gaussian import SingleAntenna
 
+_N_DIMS_MULTIPLE_ANTENNAS: int = 4
 
 def _next_multiple_of_8(n: int) -> int:
     """Round n up to the next multiple of 8."""
@@ -58,12 +59,17 @@ class Delayed(nn.Module):
         """Forward pass through the delayed fusion module.
 
         Arguments:
-            x: Input tensor of shape (batch_size, num_antennas, num_features).
+            x: Input tensor of shape (batch_size, n_antennas, window_size, n_subcarriers) if num_antennas > 1,
+                or (batch_size, window_size, n_subcarriers) if num_antennas=1.
 
         Returns:
             Output tensor of shape (batch_size, n_activities).
 
         """
-        outs = [torch.cat(antenna(x[:, i])[1:], dim=1) for i, antenna in enumerate(self.__antennas)]
+        outs = []
+        for i, antenna in enumerate(self.__antennas):
+            _, mu, logvar = antenna(x[:, i] if x.ndim == _N_DIMS_MULTIPLE_ANTENNAS else x)
+            outs.append(torch.cat([mu, logvar], dim=1))
+
         z = torch.cat(outs, dim=1)
         return self.__fc(z)
