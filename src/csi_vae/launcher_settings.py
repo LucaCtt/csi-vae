@@ -51,7 +51,12 @@ class LauncherSettings(BaseSettings):
     """Maximum seconds to wait for a batch of trials to complete before giving up."""
     n_gaussians_patience: int = 2
     """Number of consecutive studies to allow without improvement before stopping the launch."""
+    n_antennas: int = 4
+    """Number of antennas to use for training the VAE. Must be <= 4, as the dataset only has 4 antennas."""
+    antenna_select: int | None = None
+    """Index of the antenna to use for training. If None, all antennas will be used"""
 
+    # Search space for hyperparameters
     batch_size: ParamRange[int] = ParamRange(min=32, max=128)
     lr: ParamRange[float] = ParamRange(min=1e-3, max=3e-2)
     kl_max: ParamRange[float] = ParamRange(min=1.0, max=20.0)

@@ -74,7 +74,7 @@ def _make_study(study_name: str, storage_dir: str | None, seed: int) -> optuna.S
     )
 
 
-def _get_params(trial: optuna.Trial, settings: LauncherSettings) -> dict[str, str | int | float]:
+def _get_params(trial: optuna.Trial, settings: LauncherSettings) -> dict[str, str | int | float | None]:
     """Extract the parameters for a trial as a dictionary."""
     lr = trial.suggest_float("lr", settings.lr.min, settings.lr.max, log=True)
     kl_max = trial.suggest_float("kl_max", settings.kl_max.min, settings.kl_max.max, log=True)
@@ -98,6 +98,8 @@ def _get_params(trial: optuna.Trial, settings: LauncherSettings) -> dict[str, st
         "conv_layers_spec": conv_layers_spec,
         "n_fusion_layers": n_fusion_layers,
         "fusion_dropout": fusion_dropout,
+        "n_antennas": settings.n_antennas,
+        "antenna_select": settings.antenna_select,
     }
 
 

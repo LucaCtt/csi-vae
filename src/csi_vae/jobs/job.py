@@ -184,10 +184,27 @@ def run_job(settings: JobSettings | None = None) -> None:
     settings = JobSettings() if settings is None else settings
     _init_rng(settings.seed)
 
-    logger.addHandler(StreamHandler(settings.n_gaussians, settings.trial_number, settings.seed))
+    logger.addHandler(
+        StreamHandler(
+            n_gaussians=settings.n_gaussians,
+            trial_number=settings.trial_number,
+            seed=settings.seed,
+            n_antennas=settings.n_antennas,
+            antenna_select=settings.antenna_select,
+        ),
+    )
     if settings.queue_url:
         queue = MessagesQueue.from_url(settings.queue_url, settings.region_name)
-        logger.addHandler(QueueHandler(queue, settings.n_gaussians, settings.trial_number, settings.seed))
+        logger.addHandler(
+            QueueHandler(
+                queue,
+                n_gaussians=settings.n_gaussians,
+                trial_number=settings.trial_number,
+                seed=settings.seed,
+                n_antennas=settings.n_antennas,
+                antenna_select=settings.antenna_select,
+            ),
+        )
 
     logger.info({"type": MessageType.STARTING})
 
