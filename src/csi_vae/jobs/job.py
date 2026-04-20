@@ -61,79 +61,70 @@ def make_dataloader(ds: Dataset, batch_size: int, shuffle: bool, seed: int) -> D
     )
 
 
-def train_gaussians(
+def train_gaussian(
     settings: JobSettings,
-    full_train_ds: dataset.MultiAntenna,
-    full_val_ds: dataset.MultiAntenna,
-) -> list[vae.SingleAntenna]:
-    """Train a separate VAE for each antenna and return the list of trained models.
+    antenna_train_ds: dataset.SingleAntenna,
+    antenna_val_ds: dataset.SingleAntenna,
+) -> vae.SingleAntenna:
+    """Train a VAE for a single antenna and return the trained model.
 
     Arguments:
         settings: JobSettings object containing hyperparameters and other settings for the job.
-        full_train_ds: The full training dataset containing data from all antennas.
-        full_val_ds: The full validation dataset containing data from all antennas.
+        antenna_train_ds: The training dataset containing data from the selected antenna.
+        antenna_val_ds: The validation dataset containing data from the selected antenna.
 
     Returns:
-        A list of trained SingleAntenna VAE models, one for each antenna.
+        A SingleAntenna VAE model trained on the selected antenna's data.
 
     """
-    gaussians = []
+    antenna_train_dl = make_dataloader(antenna_train_ds, settings.batch_size, shuffle=True, seed=settings.seed)
+    antenna_val_dl = make_dataloader(antenna_val_ds, settings.batch_size, shuffle=False, seed=settings.seed)
 
-    # Train a separate VAE for each antenna
-    for antenna_select in range(settings.n_antennas):
-        antenna_train_ds = dataset.SingleAntenna(full_train_ds, antenna_select)
-        antenna_val_ds = dataset.SingleAntenna(full_val_ds, antenna_select)
+    gaussian = vae.SingleAntenna(
+        settings.window_size,
+        settings.n_subcarriers,
+        settings.n_gaussians,
+        vae.CONV_SPECS[settings.conv_layers_spec],
+    )
+    gaussian.compile(fullgraph=True)
 
-        antenna_train_dl = make_dataloader(antenna_train_ds, settings.batch_size, shuffle=True, seed=settings.seed)
-        antenna_val_dl = make_dataloader(antenna_val_ds, settings.batch_size, shuffle=False, seed=settings.seed)
+    trainer = vae.Trainer(
+        gaussian,
+        antenna_train_dl,
+        antenna_val_dl,
+        vae.TrainerParams(
+            lr=settings.lr,
+            early_stop_patience=settings.early_stop_patience,
+            early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
+            collapse_patience=settings.collapse_patience,
+            kl_max=settings.kl_max,
+        ),
+    )
+    trainer.train(settings.n_epochs)
 
-        gaussian = vae.SingleAntenna(
-            settings.window_size,
-            settings.n_subcarriers,
-            settings.n_gaussians,
-            vae.CONV_SPECS[settings.conv_layers_spec],
-        )
-        gaussian.compile(fullgraph=True)
-
-        trainer = vae.Trainer(
-            gaussian,
-            antenna_train_dl,
-            antenna_val_dl,
-            vae.TrainerParams(
-                lr=settings.lr,
-                early_stop_patience=settings.early_stop_patience,
-                early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
-                collapse_patience=settings.collapse_patience,
-                kl_max=settings.kl_max,
-            ),
-        )
-        trainer.train(settings.n_epochs)
-
-        gaussians.append(gaussian)
-
-    return gaussians
+    return gaussian
 
 
 def train_fusion(
     settings: JobSettings,
-    full_train_ds: dataset.MultiAntenna,
-    full_val_ds: dataset.MultiAntenna,
+    train_ds: torch.utils.data.Dataset,
+    val_ds: torch.utils.data.Dataset,
     gaussians: list[vae.SingleAntenna],
 ) -> fusion.Delayed:
     """Train the delayed fusion model using the trained Gaussian models and return the trained fusion model.
 
     Arguments:
         settings: JobSettings object containing hyperparameters and other settings for the job.
-        full_train_ds: The full training dataset containing data from all antennas.
-        full_val_ds: The full validation dataset containing data from all antennas.
+        train_ds: The training dataset, can be for all antennas or for a single one.
+        val_ds: The validation dataset, can be for all antennas or for a single one.
         gaussians: A list of trained SingleAntenna VAE models, one for each antenna.
 
     Returns:
         A trained Delayed fusion model that combines the outputs of the Gaussian models for activity classification.
 
     """
-    full_train_dl = make_dataloader(full_train_ds, settings.batch_size, shuffle=True, seed=settings.seed)
-    full_val_dl = make_dataloader(full_val_ds, settings.batch_size, shuffle=False, seed=settings.seed)
+    full_train_dl = make_dataloader(train_ds, settings.batch_size, shuffle=True, seed=settings.seed)
+    full_val_dl = make_dataloader(val_ds, settings.batch_size, shuffle=False, seed=settings.seed)
 
     delayed_fusion = fusion.Delayed(
         gaussians,
@@ -168,7 +159,14 @@ def _train_and_eval(settings: JobSettings) -> float:
         stride=settings.stride,
     )
 
-    gaussians = train_gaussians(settings, full_train_ds, full_val_ds)
+    gaussians = []
+    antennas_to_train = [settings.antenna_select] if settings.antenna_select is not None else range(settings.n_antennas)
+    for antenna_select in antennas_to_train:
+        antenna_train_ds = dataset.SingleAntenna(full_train_ds, antenna_select)
+        antenna_val_ds = dataset.SingleAntenna(full_val_ds, antenna_select)
+        gaussian = train_gaussian(settings, antenna_train_ds, antenna_val_ds)
+        gaussians.append(gaussian)
+
     delayed_fusion = train_fusion(settings, full_train_ds, full_val_ds, gaussians)
 
     if settings.bucket_name:

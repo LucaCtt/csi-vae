@@ -19,15 +19,17 @@ launcher = [
     "optuna>=4.7.0",
     "rich>=14.3.3",
 ]
-
-[dependency-groups]
-dev = [
-    "ruff>=0.15.4",
+notebooks = [
     "ipykernel>=7.2.0",
     "matplotlib>=3.10.8",
     "pandas>=3.0.1",
     "scipy>=1.17.1",
     "scikit-learn>=1.8.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.4",
 ]
 
 [build-system]
@@ -61,4 +63,4 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"*.ipynb" = ["T201"]
+"*.ipynb" = ["T201"]  # `print` found

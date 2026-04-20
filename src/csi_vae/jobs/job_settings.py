@@ -24,6 +24,8 @@ class JobSettings(BaseSettings):
     """Number of activities (classes) in the dataset."""
     n_antennas: int = 4
     """Number of antennas in the CSI data."""
+    antenna_select: int | None = None
+    """Index of the antenna to use for training. If set to None, all antennas will be used."""
     stride: int = 50
     """Stride to use when segmenting the data (number of samples to skip between windows)."""
     n_epochs: int = 150
