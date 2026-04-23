@@ -20,8 +20,9 @@ launcher = [
     "rich>=14.3.3",
 ]
 notebooks = [
-    "ipykernel>=7.2.0",
+    "dtreeviz>=2.3.2",
     "edl-losses>=0.5.0",
+    "ipykernel>=7.2.0",
     "matplotlib>=3.10.8",
     "optuna>=4.7.0",
     "pandas>=3.0.1",
