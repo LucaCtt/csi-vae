@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY src src
 COPY README.md .
-COPY dataset.h5 .
+COPY dataset/S1a.h5 .
 
 # Install the project itself
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -35,7 +35,7 @@ WORKDIR /app
 
 COPY --from=builder /app/.venv .venv
 COPY --from=builder /app/src src
-COPY --from=builder /app/dataset.h5 .
+COPY --from=builder /app/S1a.h5 .
 
 # Make the venv available without uv run
 ENV PATH="/app/.venv/bin:$PATH"

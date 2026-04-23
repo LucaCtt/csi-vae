@@ -6,7 +6,7 @@ class JobSettings(BaseSettings):
 
     trial_number: int = 0
     """Unique identifier for the trial, used for logging and result storage."""
-    dataset_path: str = "dataset.h5"
+    dataset_path: str = "dataset/S1a.h5"
     """Path to the dataset to be used for training and evaluation."""
     queue_url: str | None = None
     """URL of the SQS message queue. If set to None, the job will not send results to a queue."""
