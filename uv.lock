@@ -224,7 +224,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
-    { name = "dtreeviz" },
     { name = "h5py" },
     { name = "numpy" },
     { name = "pydantic-settings" },
@@ -239,6 +238,7 @@ launcher = [
     { name = "rich" },
 ]
 notebooks = [
+    { name = "dtreeviz" },
     { name = "edl-losses" },
     { name = "ipykernel" },
     { name = "matplotlib" },
@@ -256,7 +256,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.60" },
-    { name = "dtreeviz", specifier = ">=2.3.2" },
+    { name = "dtreeviz", marker = "extra == 'notebooks'", specifier = ">=2.3.2" },
     { name = "edl-losses", marker = "extra == 'notebooks'", specifier = ">=0.5.0" },
     { name = "h5py", specifier = ">=3.16.0" },
     { name = "ipykernel", marker = "extra == 'notebooks'", specifier = ">=7.2.0" },
