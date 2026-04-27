@@ -7,6 +7,7 @@ from csi_vae.jobs.vae.gaussian import SingleAntenna
 
 _N_DIMS_MULTIPLE_ANTENNAS: int = 4
 
+
 def _next_multiple_of_8(n: int) -> int:
     """Round n up to the next multiple of 8."""
     return math.ceil(n / 8) * 8
@@ -54,6 +55,11 @@ class Delayed(nn.Module):
             param.requires_grad = False
 
         self.__fc = _build_fc(n_gaussians * 2 * len(antennas), n_activities, n_layers, dropout)
+
+    @property
+    def antennas(self) -> list[SingleAntenna]:
+        """Return the list of SingleAntenna modules."""
+        return list(self.__antennas)  # pyright: ignore[reportReturnType]
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the delayed fusion module.

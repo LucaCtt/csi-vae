@@ -1,6 +1,21 @@
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import optuna
+
+
+@dataclass
+class StudyResult:
+    """Data class to store the results of a single Optuna studyl."""
+
+    n_gaussians: int
+    trial_number: int
+    trial_value: float
+    seed: int
+    best_seed_accuracy: float
+    accuracies_per_seed: dict[str, float]
+    params: dict[str, Any]
 
 
 def read_studies(launch_dir: Path) -> list[optuna.Study]:
@@ -20,29 +35,30 @@ def read_studies(launch_dir: Path) -> list[optuna.Study]:
     ]
 
 
-def get_best_model(studies: list[optuna.Study]) -> dict:
+def get_best_model(studies: list[optuna.Study]) -> StudyResult:
     """Return the best model across all studies based on the highest seed accuracy.
 
     Arguments:
         studies: A list of Optuna Study objects, each containing trial data for different hyperparameter configurations.
 
     Returns:
-        A dictionary containing the details of the best model.
+        StudyResult: A dataclass containing the details of the best model found across all studies.
 
     """
-    best_models_per_study: list[dict] = []
+    best_models_per_study: list[StudyResult] = []
 
     for i, study in enumerate(studies):
         study_df = study.trials_dataframe()
         completed = study_df[study_df["state"] == "COMPLETE"].copy()
-        study_best = {
-            "n_gaussians": i + 1,
-            "trial_number": 0,
-            "trial_value": 0.0,
-            "seed": 0,
-            "best_seed_accuracy": 0.0,
-            "params": {},
-        }
+        study_best = StudyResult(
+            n_gaussians=i + 1,
+            trial_number=0,
+            trial_value=0.0,
+            seed=0,
+            best_seed_accuracy=0.0,
+            accuracies_per_seed={},
+            params={},
+        )
 
         for _, trial in completed.iterrows():
             accuracies_per_seed = trial["user_attrs_accuracies"]
@@ -50,17 +66,17 @@ def get_best_model(studies: list[optuna.Study]) -> dict:
             best_seed = max(accuracies_per_seed, key=accuracies_per_seed.get)
             best_accuracy = float(accuracies_per_seed[str(best_seed)])
 
-            if trial["value"] > study_best["trial_value"]:
-                study_best = {
-                    "n_gaussians": i + 1,
-                    "trial_number": trial["number"],
-                    "trial_value": trial["value"],
-                    "seed": int(best_seed),
-                    "best_seed_accuracy": best_accuracy,
-                    "accuracies_per_seed": accuracies_per_seed,
-                    "params": trial.filter(like="params_").rename(lambda x: x.replace("params_", "")).to_dict(),
-                }
+            if trial["value"] > study_best.trial_value:
+                study_best = StudyResult(
+                    n_gaussians=i + 1,
+                    trial_number=trial["number"],
+                    trial_value=trial["value"],
+                    seed=int(best_seed),
+                    best_seed_accuracy=best_accuracy,
+                    accuracies_per_seed=accuracies_per_seed,
+                    params=trial.filter(like="params_").rename(lambda x: x.replace("params_", "")).to_dict(),
+                )
 
         best_models_per_study.append(study_best)
 
-    return max(best_models_per_study, key=lambda x: x["best_seed_accuracy"])
+    return max(best_models_per_study, key=lambda x: x.best_seed_accuracy)

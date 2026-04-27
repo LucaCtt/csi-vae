@@ -257,7 +257,7 @@ dev = [
 requires-dist = [
     { name = "boto3", specifier = ">=1.42.60" },
     { name = "dtreeviz", marker = "extra == 'notebooks'", specifier = ">=2.3.2" },
-    { name = "edl-losses", marker = "extra == 'notebooks'", specifier = ">=0.5.0" },
+    { name = "edl-losses", marker = "extra == 'notebooks'", specifier = ">=0.6.0" },
     { name = "h5py", specifier = ">=3.16.0" },
     { name = "ipykernel", marker = "extra == 'notebooks'", specifier = ">=7.2.0" },
     { name = "matplotlib", marker = "extra == 'notebooks'", specifier = ">=3.10.8" },
@@ -399,15 +399,15 @@ wheels = [
 
 [[package]]
 name = "edl-losses"
-version = "0.5.0"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/7d/2386ded725c04a3c7aa15934d5be4058d6f29231fc2e5ca3cdf4ca72d739/edl_losses-0.5.0.tar.gz", hash = "sha256:d151a4b17a38c6521706feb769b55de19ccb9297fb0205bf94c09c208c614ad5", size = 7042, upload-time = "2026-04-23T11:56:39.665Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1d/24/f79128dcd5772311a8b11f2fa78fdfc841477b5c218ff5c98cfcab83aded/edl_losses-0.6.0.tar.gz", hash = "sha256:d0141e851d063d1aa19d7d7030a3e36d11ed32a336a2adec8adb797c06a1b540", size = 7432, upload-time = "2026-04-26T08:31:28.193Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b6/20/85826355ddf2b035270552c8a166f3aae4158339925f71654511f1769522/edl_losses-0.5.0-py3-none-any.whl", hash = "sha256:4a3d1125197ca82b0d1c4ad89a20a6c23b4667b8635016ff3c925b53f8f25202", size = 9422, upload-time = "2026-04-23T11:56:38.798Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/22/998f9414b7a8cc2839911b3272d8da3c68f8b84a32d89a0f112fed4ebc6e/edl_losses-0.6.0-py3-none-any.whl", hash = "sha256:60e4276f824c34bbf6bdae879305f4bfe1d95a8bbac7673b3f6d93f72611f1b9", size = 10113, upload-time = "2026-04-26T08:31:29.31Z" },
 ]
 
 [[package]]

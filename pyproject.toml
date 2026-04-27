@@ -21,7 +21,7 @@ launcher = [
 ]
 notebooks = [
     "dtreeviz>=2.3.2",
-    "edl-losses>=0.5.0",
+    "edl-losses>=0.6.0",
     "ipykernel>=7.2.0",
     "matplotlib>=3.10.8",
     "optuna>=4.7.0",

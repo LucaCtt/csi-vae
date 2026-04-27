@@ -40,7 +40,7 @@ def _generate_seeds(starter_seed: int, n_seeds: int) -> list[int]:
     return [rng.randint(0, 2**31 - 1) for _ in range(n_seeds)]
 
 
-def _make_study(study_name: str, storage_dir: str | None, seed: int) -> optuna.Study:
+def make_study(study_name: str, storage_dir: str | None, seed: int) -> optuna.Study:
     """Create (or load) an Optuna study backed by a journal file.
 
     Arguments:
@@ -152,7 +152,7 @@ class Launcher:
 
         """
         study_name = f"l{n_gaussians}"
-        study = _make_study(study_name, self.__settings.storage_dir, self.__settings.starter_seed)
+        study = make_study(study_name, self.__settings.storage_dir, self.__settings.starter_seed)
 
         # Check how many trials are already complete to avoid re-running them if the launcher is restarted
         already_done = sum(1 for t in study.trials if t.state == TrialState.COMPLETE)
