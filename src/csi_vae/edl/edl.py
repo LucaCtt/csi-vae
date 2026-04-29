@@ -28,9 +28,9 @@ optuna.logging.disable_default_handler()
 warnings.filterwarnings("ignore", category=optuna.exceptions.ExperimentalWarning)
 
 N_TRIALS = 100
-LAUNCH_DIR = Path("out/flat_conv_full")
+LAUNCH_DIR = Path("out/fusion")
 RESULTS_DIR = Path("out/edl")
-WEIGHTS_DIR = Path("weights/flat_conv_full")
+WEIGHTS_DIR = Path("weights/fusion")
 EDL_DIR = Path("weights") / "edl"
 GEN_DIR = Path("weights") / "gen"
 OOD_DATASET = Path("dataset/S1b.h5")
