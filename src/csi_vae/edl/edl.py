@@ -30,11 +30,13 @@ warnings.filterwarnings("ignore", category=optuna.exceptions.ExperimentalWarning
 N_TRIALS = 100
 LAUNCH_DIR = Path("out/flat_conv_full")
 RESULTS_DIR = Path("out/edl")
-WEIGHTS_DIR = Path("weights/fusion")
+WEIGHTS_DIR = Path("weights/flat_conv_full")
+EDL_DIR = Path("weights") / "edl"
+GEN_DIR = Path("weights") / "gen"
 OOD_DATASET = Path("dataset/S1b.h5")
-OBJECTIVE_ALPHA = 0.6
+OBJECTIVE_ALPHA = 0.5
+ACCURACY_THRESHOLD = 0.85
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 settings = JobSettings()
 
@@ -101,14 +103,13 @@ def _edl_objective(trial: optuna.Trial) -> float:
         best_model.params["n_fusion_layers"],
         best_model.params["fusion_dropout"],
     )
-    loss_type = trial.suggest_categorical("loss_type", ["sse", "ce", "mse"])
     should_anneal = trial.suggest_categorical("should_anneal", [True, False])
     if should_anneal:
-        anneal_epochs = trial.suggest_int("annealing_epochs", 1, settings.n_epochs // 2)
-        edl_loss = EDLLoss(loss_type=loss_type, anneal_epochs=anneal_epochs)  # pyright: ignore[reportArgumentType]
+        anneal_epochs = trial.suggest_int("annealing_epochs", 1, 2 * settings.n_epochs // 3)
+        edl_loss = EDLLoss(anneal_epochs=anneal_epochs)
     else:
         beta = trial.suggest_float("beta", 0.0, 1.0)
-        edl_loss = EDLLoss(loss_type=loss_type, beta=beta)  # pyright: ignore[reportArgumentType]
+        edl_loss = EDLLoss(beta=beta)
 
     edl_trainer = EDLTrainer(
         edl_fusion,
@@ -124,6 +125,13 @@ def _edl_objective(trial: optuna.Trial) -> float:
     )
     edl_trainer.train(settings.n_epochs)
 
+    out_dir = EDL_DIR / f"t{trial.number}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        edl_fusion.state_dict(),
+        out_dir / "delayed_fusion.pt",
+    )
+
     accuracy, unc_correct, unc_wrong, _, _ = eval_edl_model(
         model=edl_fusion,
         inference_fn=edl_inference,
@@ -131,7 +139,22 @@ def _edl_objective(trial: optuna.Trial) -> float:
         device=DEVICE,
     )
 
-    return OBJECTIVE_ALPHA * accuracy + (1 - OBJECTIVE_ALPHA) * (unc_correct - unc_wrong)
+    if accuracy < ACCURACY_THRESHOLD:
+        raise optuna.TrialPruned
+
+    trial.set_user_attr("accuracy", accuracy)
+    trial.set_user_attr("unc_correct", unc_correct)
+    trial.set_user_attr("unc_wrong", unc_wrong)
+
+    logger.info(
+        "[EDL] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f",
+        trial.number,
+        accuracy,
+        unc_correct,
+        unc_wrong,
+    )
+
+    return OBJECTIVE_ALPHA * accuracy + (1 - OBJECTIVE_ALPHA) * (unc_wrong - unc_correct)
 
 
 def _gen_objective(trial: optuna.Trial) -> float:
@@ -143,9 +166,11 @@ def _gen_objective(trial: optuna.Trial) -> float:
         best_model.params["fusion_dropout"],
     ).to(DEVICE)
 
-    should_anneal = trial.suggest_categorical("should_anneal", [True, False])
-    if should_anneal:
-        anneal_epochs = trial.suggest_int("annealing_epochs", 1, settings.n_epochs // 2)
+    beta_mode = trial.suggest_categorical("beta_mode", ["auto", "anneal", "fixed"])
+    if beta_mode == "auto":
+        gen_loss = GENLoss()
+    elif beta_mode == "anneal":
+        anneal_epochs = trial.suggest_int("annealing_epochs", 1, 2 * settings.n_epochs // 3)
         gen_loss = GENLoss(anneal_epochs=anneal_epochs)
     else:
         beta = trial.suggest_float("beta", 0.0, 1.0)
@@ -156,7 +181,7 @@ def _gen_objective(trial: optuna.Trial) -> float:
         train_dl,
         val_dl,
         fusion.TrainerParams(
-            lr=trial.suggest_float("lr", 1e-5, 1e-2, log=True),
+            lr=best_model.params["lr"],
             early_stop_patience=settings.early_stop_patience,
             early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
         ),
@@ -165,6 +190,14 @@ def _gen_objective(trial: optuna.Trial) -> float:
     )
     gen_trainer.train(settings.n_epochs)
 
+    out_dir = GEN_DIR / f"t{trial.number}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    torch.save(
+        gen_fusion.state_dict(),
+        out_dir / "delayed_fusion.pt",
+    )
+
     accuracy, unc_correct, unc_wrong, _, _ = eval_edl_model(
         model=gen_fusion,
         inference_fn=gen_inference,
@@ -172,7 +205,22 @@ def _gen_objective(trial: optuna.Trial) -> float:
         device=DEVICE,
     )
 
-    return OBJECTIVE_ALPHA * accuracy + (1 - OBJECTIVE_ALPHA) * (unc_correct - unc_wrong)
+    trial.set_user_attr("accuracy", accuracy)
+    trial.set_user_attr("unc_correct", unc_correct)
+    trial.set_user_attr("unc_wrong", unc_wrong)
+
+    if accuracy < ACCURACY_THRESHOLD:
+        raise optuna.TrialPruned
+
+    logger.info(
+        "[GEN] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f",
+        trial.number,
+        accuracy,
+        unc_correct,
+        unc_wrong,
+    )
+
+    return OBJECTIVE_ALPHA * accuracy + (1 - OBJECTIVE_ALPHA) * (unc_wrong - unc_correct)
 
 
 def _run_study(study_name: str, objective_fn: Callable) -> None:
