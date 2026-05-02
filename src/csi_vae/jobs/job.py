@@ -29,8 +29,13 @@ class MessageType(StrEnum):
     ERROR = "ERROR"
 
 
-def _init_rng(seed: int) -> None:
-    """Initialize random seeds for reproducibility."""
+def init_rng(seed: int) -> None:
+    """Initialize random seeds for reproducibility.
+
+    Arguments:
+        seed (int): The random seed to use for all random number generators.
+
+    """
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     torch.manual_seed(seed)
@@ -182,7 +187,7 @@ def _train_and_eval(settings: JobSettings) -> float:
 def run_job(settings: JobSettings | None = None) -> None:
     """Run a single job of training and evaluating the autoencoder and classifier."""
     settings = JobSettings() if settings is None else settings
-    _init_rng(settings.seed)
+    init_rng(settings.seed)
 
     logger.addHandler(
         StreamHandler(
