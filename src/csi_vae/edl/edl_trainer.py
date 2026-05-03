@@ -9,7 +9,7 @@ class EDLTrainer(fusion.Trainer):
 
     In addition to standard fusion.Trainer training:
         - Tracks the current epoch to use in the annealing of the EDL loss,
-        - Applies softplus to logits before EDL loss computation to ensure positivity of evidence.
+        - Applies exp to logits before EDL loss computation to ensure positivity of evidence.
         - Uses edl inference for accuracy computation during training.
     """
 
@@ -33,7 +33,7 @@ class EDLTrainer(fusion.Trainer):
         with torch.autocast(device_type=self._device.type, dtype=torch.float16):
             logits = self._model(x)
 
-        logits = torch.nn.functional.softplus(logits)
+        logits = torch.exp(logits)
         loss = self._criterion(logits, y)
         self._scaler.scale(loss).backward()
         self._scaler.step(self._optimizer)

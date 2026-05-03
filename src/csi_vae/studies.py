@@ -18,7 +18,41 @@ class StudyResult:
     params: dict[str, Any]
 
 
-def read_studies(launch_dir: Path) -> list[optuna.Study]:
+def make_study(study_name: str, storage_dir: str | None, seed: int) -> optuna.Study:
+    """Create (or load) an Optuna study backed by a journal file.
+
+    Arguments:
+        study_name: The name of the study to create or load.
+        storage_dir: The directory to use for storage. If None, the study will be created without persistent storage.
+        seed: The seed to use for the random number generator.
+
+    Returns:
+        An Optuna Study object.
+
+    """
+    if storage_dir:
+        Path(storage_dir).mkdir(parents=True, exist_ok=True)
+        journal_path = f"{storage_dir}/{study_name}.sqlite"
+    else:
+        journal_path = ":memory:"
+
+    storage = optuna.storages.RDBStorage(
+        url=f"sqlite:///{journal_path}",
+        heartbeat_interval=60,
+        grace_period=120,
+        failed_trial_callback=optuna.storages.RetryFailedTrialCallback(max_retry=3),
+    )
+
+    return optuna.create_study(
+        study_name=study_name,
+        storage=storage,
+        sampler=optuna.samplers.TPESampler(seed=seed),
+        direction="maximize",
+        load_if_exists=True,
+    )
+
+
+def read_studies(launch_dir: str) -> list[optuna.Study]:
     """Read all Optuna studies from the specified launch directory and return them as a list of DataFrames.
 
     Arguments:
@@ -28,9 +62,9 @@ def read_studies(launch_dir: Path) -> list[optuna.Study]:
         list[optuna.Study]: A list of Optuna Study objects loaded from the SQLite files in the launch directory.
 
     """
-    studies_files = sorted([f.name for f in launch_dir.iterdir() if f.is_file() and f.suffix == ".sqlite"])
+    studies_files = sorted([f.name for f in Path(launch_dir).iterdir() if f.is_file() and f.suffix == ".sqlite"])
     return [
-        optuna.load_study(study_name=study.split(".")[0], storage=f"sqlite:///{launch_dir / study}")
+        optuna.load_study(study_name=study.split(".")[0], storage=f"sqlite:///{Path(launch_dir) / study}")
         for study in studies_files
     ]
 

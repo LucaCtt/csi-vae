@@ -4,7 +4,6 @@ import random
 import statistics
 import time
 import warnings
-from pathlib import Path
 
 import optuna
 import optuna.terminator
@@ -14,6 +13,7 @@ from rich.logging import RichHandler
 from csi_vae.aws import JobSubmitter, MessagesQueue
 from csi_vae.jobs import JobSettings, MessageType
 from csi_vae.launcher_settings import LauncherSettings
+from csi_vae.studies import make_study
 
 # Logging config
 handler = RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=True)
@@ -38,40 +38,6 @@ def _generate_seeds(starter_seed: int, n_seeds: int) -> list[int]:
     """
     rng = random.SystemRandom(starter_seed)
     return [rng.randint(0, 2**31 - 1) for _ in range(n_seeds)]
-
-
-def make_study(study_name: str, storage_dir: str | None, seed: int) -> optuna.Study:
-    """Create (or load) an Optuna study backed by a journal file.
-
-    Arguments:
-        study_name: The name of the study to create or load.
-        storage_dir: The directory to use for storage. If None, the study will be created without persistent storage.
-        seed: The seed to use for the random number generator.
-
-    Returns:
-        An Optuna Study object.
-
-    """
-    if storage_dir:
-        Path(storage_dir).mkdir(parents=True, exist_ok=True)
-        journal_path = f"{storage_dir}/{study_name}.sqlite"
-    else:
-        journal_path = ":memory:"
-
-    storage = optuna.storages.RDBStorage(
-        url=f"sqlite:///{journal_path}",
-        heartbeat_interval=60,
-        grace_period=120,
-        failed_trial_callback=optuna.storages.RetryFailedTrialCallback(max_retry=3),
-    )
-
-    return optuna.create_study(
-        study_name=study_name,
-        storage=storage,
-        sampler=optuna.samplers.TPESampler(seed=seed),
-        direction="maximize",
-        load_if_exists=True,
-    )
 
 
 def _get_params(trial: optuna.Trial, settings: LauncherSettings) -> dict[str, str | int | float | None]:

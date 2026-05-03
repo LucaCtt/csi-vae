@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import torch
 from edl_losses.gen import GENLoss, gen_inference
 
@@ -8,7 +10,7 @@ from csi_vae.jobs import fusion
 def generate_ood_samples(
     model: fusion.Delayed,
     x: torch.Tensor,
-    noise_scale: float = 0.3,
+    noise_scale: float,
 ) -> torch.Tensor:
     """Generate OOD samples by perturbing in the latent space of each antenna VAE.
 
@@ -36,6 +38,13 @@ def generate_ood_samples(
     return torch.stack(ood_list, dim=1)  # (B, n_antennas, window_size, n_subcarriers)
 
 
+@dataclass(frozen=True)
+class GENTrainerParams(fusion.TrainerParams):
+    """Parameters for GENTrainer."""
+
+    noise_scale: float = 0.3  # std of the latent perturbation
+
+
 class GENTrainer(fusion.Trainer):
     """Wrapper around fusion.Trainer to train the classification head using the GEN loss.
 
@@ -50,7 +59,7 @@ class GENTrainer(fusion.Trainer):
         model: fusion.Delayed,
         train_dl: torch.utils.data.DataLoader,
         val_dl: torch.utils.data.DataLoader,
-        params: fusion.TrainerParams,
+        params: GENTrainerParams,
         criterion: GENLoss,
         device: torch.device | None = None,
     ) -> None:
@@ -58,12 +67,13 @@ class GENTrainer(fusion.Trainer):
         super().__init__(model, train_dl, val_dl, params, device)
         self._current_epoch = 0
         self._criterion = criterion
+        self._noise_scale = params.noise_scale
 
     def _run_batch(self, x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         self._optimizer.zero_grad()
 
+        x_ood_list = generate_ood_samples(self._model, x, self._noise_scale)
         with torch.autocast(device_type=self._device.type, dtype=torch.float16):
-            x_ood_list = generate_ood_samples(self._model, x)
             logits_in = self._model(x)
             logits_out = self._model(x_ood_list)
 
@@ -77,6 +87,10 @@ class GENTrainer(fusion.Trainer):
 
         return loss.detach(), accuracy
 
+    def _run_epoch(self) -> tuple[torch.Tensor, torch.Tensor]:
+        self._current_epoch += 1
+        return super()._run_epoch()
+
     @torch.no_grad()
     def _run_val_epoch(self) -> torch.Tensor:
         self._model.eval()
@@ -87,7 +101,7 @@ class GENTrainer(fusion.Trainer):
             x, y = x_cpu.to(self._device, non_blocking=True), y_cpu.to(self._device, non_blocking=True)
 
             with torch.autocast(device_type=self._device.type, dtype=torch.float16):
-                x_ood_list = generate_ood_samples(self._model, x)
+                x_ood_list = generate_ood_samples(self._model, x, self._noise_scale)
                 logits_in = self._model(x)
                 logits_out = self._model(x_ood_list)
 

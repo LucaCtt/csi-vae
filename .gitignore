@@ -14,5 +14,9 @@ wheels/
 .vscode/
 .idea/
 
+# Data files
 weights/
 weights.zip
+
+# Plots
+plots/
