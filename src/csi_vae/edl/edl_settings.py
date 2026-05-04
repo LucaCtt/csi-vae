@@ -34,5 +34,3 @@ class EDLSettings(BaseSettings):
     """Number of epochs to wait before starting to check for early stopping."""
     objective_alpha: float = 0.5
     """Alpha parameter to balance accuracy and uncertainty in the objective function."""
-    objective_accuracy_threshold: float = 0.85
-    """Minimum accuracy required for a trial to be considered successful."""

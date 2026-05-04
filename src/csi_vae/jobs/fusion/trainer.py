@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from typing import TypedDict
 
 import torch
 from torch import nn
@@ -8,8 +8,7 @@ from csi_vae.jobs import fusion
 from csi_vae.jobs.early_stopping import EarlyStopping
 
 
-@dataclass(frozen=True)
-class TrainerParams:
+class TrainerParams(TypedDict):
     """Parameters for the DelayedFusion Trainer."""
 
     lr: float
@@ -47,9 +46,13 @@ class Trainer:
         self._train_dl = train_dl
         self._val_dl = val_dl
         self._criterion = nn.CrossEntropyLoss()
-        self._optimizer = torch.optim.Adam(self._model.parameters(), lr=params.lr)
+        self._optimizer = torch.optim.Adam(self._model.parameters(), lr=params["lr"])
         self._scaler = torch.GradScaler(device=self._device.type)
-        self._early_stopping = EarlyStopping(self._model, params.early_stop_patience, params.early_stop_warmup_epochs)
+        self._early_stopping = EarlyStopping(
+            self._model,
+            params["early_stop_patience"],
+            params["early_stop_warmup_epochs"],
+        )
 
         self._len_train = len(train_dl)
         self._len_val = len(val_dl)

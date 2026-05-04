@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from typing import Literal
 
 import torch
 from edl_losses.gen import GENLoss, gen_inference
@@ -38,11 +38,17 @@ def generate_ood_samples(
     return torch.stack(ood_list, dim=1)  # (B, n_antennas, window_size, n_subcarriers)
 
 
-@dataclass(frozen=True)
 class GENTrainerParams(fusion.TrainerParams):
     """Parameters for GENTrainer."""
 
-    noise_scale: float = 0.3  # std of the latent perturbation
+    beta: float | Literal["auto", "anneal"]
+    """Coefficient for the OOD loss term in the GEN loss;"""
+
+    anneal_epochs: int
+    """If beta is 'anneal', number of epochs over which to anneal beta from 0 to 1."""
+
+    noise_scale: float
+    """Standard deviation of the Gaussian noise added to the latent representation for OOD sample generation."""
 
 
 class GENTrainer(fusion.Trainer):
@@ -60,29 +66,31 @@ class GENTrainer(fusion.Trainer):
         train_dl: torch.utils.data.DataLoader,
         val_dl: torch.utils.data.DataLoader,
         params: GENTrainerParams,
-        criterion: GENLoss,
         device: torch.device | None = None,
     ) -> None:
         """Initialize the GENTrainer."""
         super().__init__(model, train_dl, val_dl, params, device)
         self._current_epoch = 0
-        self._criterion = criterion
-        self._noise_scale = params.noise_scale
+        self._criterion = GENLoss(
+            beta=params["beta"],
+            anneal_epochs=params["anneal_epochs"],
+        )
+        self._noise_scale = params["noise_scale"]
 
     def _run_batch(self, x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         self._optimizer.zero_grad()
 
-        x_ood_list = generate_ood_samples(self._model, x, self._noise_scale)
         with torch.autocast(device_type=self._device.type, dtype=torch.float16):
+            x_ood_list = generate_ood_samples(self._model, x, self._noise_scale)
             logits_in = self._model(x)
             logits_out = self._model(x_ood_list)
 
-        loss = self._criterion(logits_in, logits_out, y)
+        loss = self._criterion(logits_in.float(), logits_out.float(), y)
         self._scaler.scale(loss).backward()
         self._scaler.step(self._optimizer)
         self._scaler.update()
 
-        class_indices, _, _ = gen_inference(logits_in)
+        class_indices, _, _ = gen_inference(logits_in.float())
         accuracy = (class_indices == y).float().mean()
 
         return loss.detach(), accuracy
@@ -105,7 +113,7 @@ class GENTrainer(fusion.Trainer):
                 logits_in = self._model(x)
                 logits_out = self._model(x_ood_list)
 
-            loss = self._criterion(logits_in, logits_out, y)
+            loss = self._criterion(logits_in.float(), logits_out.float(), y)
             total_loss += loss.detach()
 
         return total_loss / self._len_val

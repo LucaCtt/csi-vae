@@ -41,6 +41,8 @@ build-backend = "uv_build"
 
 [project.scripts]
 launch = "csi_vae.launcher:run_launcher"
+job = "csi_vae.jobs.job:run_job"
+edl = "csi_vae.edl.edl:run_edl"
 
 [tool.ruff]
 line-length = 120

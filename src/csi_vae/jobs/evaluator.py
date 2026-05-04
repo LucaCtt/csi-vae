@@ -14,9 +14,9 @@ class Evaluator:
         device: torch.device | None = None,
     ) -> None:
         """Initialize the Evaluator with the VAE, classifier, and dataloader."""
-        self.__device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.__model = model.to(self.__device)
-        self.__dataloader = dataloader
+        self._device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._model = model.to(self._device)
+        self._dataloader = dataloader
 
     @torch.no_grad()
     def evaluate(self) -> float:
@@ -32,14 +32,14 @@ class Evaluator:
             Accuracy of the classifier on the data.
 
         """
-        self.__model.eval()
+        self._model.eval()
 
         correct = total = 0
 
-        for batch_x, batch_y in self.__dataloader:
-            x, y = batch_x.to(self.__device), batch_y.to(self.__device)
-            with torch.autocast(device_type=self.__device.type, dtype=torch.float16):
-                preds = self.__model(x).argmax(dim=1)
+        for batch_x, batch_y in self._dataloader:
+            x, y = batch_x.to(self._device), batch_y.to(self._device)
+            with torch.autocast(device_type=self._device.type, dtype=torch.float16):
+                preds = self._model(x).argmax(dim=1)
 
             correct += (preds == y).sum().item()
             total += y.size(0)
