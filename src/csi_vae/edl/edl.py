@@ -161,9 +161,10 @@ def _gen_objective(trial: optuna.Trial) -> float:
         wi_har_results.params["fusion_dropout"],
     )
 
-    beta_mode = trial.suggest_categorical("beta_mode", ["auto", "anneal"])
-    anneal_epochs = trial.suggest_int("anneal_epochs", 1, 2 * settings.n_epochs // 3) if beta_mode == "anneal" else 0
-    noise_scale = trial.suggest_float("noise_scale", 0.1, 0.5)
+    beta = trial.suggest_categorical("beta_mode", ["auto", "anneal"])
+    anneal_epochs = trial.suggest_int("anneal_epochs", 1, 2 * settings.n_epochs // 3) if beta == "anneal" else 0
+    gan_hidden_dim = trial.suggest_categorical("gan_hidden_dim", [64, 128, 256])
+    gan_lr = trial.suggest_float("gan_lr", 1e-5, 1e-3, log=True)
 
     gen_trainer = GENTrainer(
         gen_fusion,
@@ -173,9 +174,10 @@ def _gen_objective(trial: optuna.Trial) -> float:
             lr=wi_har_results.params["lr"],
             early_stop_patience=settings.early_stop_patience,
             early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
-            beta="anneal",
+            beta=beta,  # pyright: ignore[reportArgumentType]
             anneal_epochs=anneal_epochs,
-            noise_scale=noise_scale,
+            gan_hidden_dim=gan_hidden_dim,
+            gan_lr=gan_lr,
         ),
     )
     gen_trainer.train(settings.n_epochs)
@@ -242,6 +244,7 @@ def run_edl() -> None:
     """Run both EDL and GEN studies."""
     _run_study("edl", _edl_objective)
     _run_study("gen", _gen_objective)
+
 
 if __name__ == "__main__":
     run_edl()
