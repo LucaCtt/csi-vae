@@ -233,6 +233,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+edl = [
+    { name = "scikit-learn" },
+]
 launcher = [
     { name = "optuna" },
     { name = "rich" },
@@ -268,12 +271,13 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "rich", marker = "extra == 'launcher'", specifier = ">=14.3.3" },
     { name = "scienceplots", specifier = ">=2.2.1" },
+    { name = "scikit-learn", marker = "extra == 'edl'", specifier = ">=1.8.0" },
     { name = "scikit-learn", marker = "extra == 'notebooks'", specifier = ">=1.8.0" },
     { name = "scipy", marker = "extra == 'notebooks'", specifier = ">=1.17.1" },
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "torch", specifier = ">=2.10.0" },
 ]
-provides-extras = ["launcher", "notebooks"]
+provides-extras = ["launcher", "edl", "notebooks"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "ruff", specifier = ">=0.15.4" }]

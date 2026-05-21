@@ -279,9 +279,13 @@ class GENTrainer(fusion.Trainer):
         self._current_epoch = 0
         self._criterion = GENLoss(beta=params["beta"], anneal_epochs=params["anneal_epochs"])
 
-        self._ood_generators = nn.ModuleList()  # One AntennaOODGenerator per antenna
-        self._gan_optimizers = []  # Separate optimizers for each antenna's GAN components
-        self._gan_scalers = []  # Separate grad scalers for mixed precision training of GAN components
+        self._ood_generators = nn.ModuleList()
+        self._opts_g = []
+        self._opts_d = []
+        self._opts_d_prime = []
+        self._scalers_g = []
+        self._scalers_d = []
+        self._scalers_d_prime = []
 
         with torch.no_grad():
             # Use a dummy batch to infer dimensions for the OOD generators and initialize them
@@ -299,16 +303,15 @@ class GENTrainer(fusion.Trainer):
                 ).to(self._device)
                 self._ood_generators.append(gen)
 
-                opt = torch.optim.Adam(
-                    [
-                        {"params": gen.G.parameters()},
-                        {"params": gen.D.parameters()},
-                        {"params": gen.D_prime.parameters()},
-                    ],
-                    lr=params["gan_lr"],
-                )
-                self._gan_optimizers.append(opt)
-                self._gan_scalers.append(torch.GradScaler(device=self._device.type))
+                # Split optimizers for different GAN components
+                self._opts_g.append(torch.optim.Adam(gen.G.parameters(), lr=params["gan_lr"]))
+                self._opts_d.append(torch.optim.Adam(gen.D.parameters(), lr=params["gan_lr"]))
+                self._opts_d_prime.append(torch.optim.Adam(gen.D_prime.parameters(), lr=params["gan_lr"]))
+
+                # Separate scalers to prevent cross-component gradient scaling issues
+                self._scalers_g.append(torch.GradScaler(device=self._device.type))
+                self._scalers_d.append(torch.GradScaler(device=self._device.type))
+                self._scalers_d_prime.append(torch.GradScaler(device=self._device.type))
 
     @torch.no_grad()
     def _generate_ood_samples(self, x: torch.Tensor) -> torch.Tensor:
@@ -334,48 +337,65 @@ class GENTrainer(fusion.Trainer):
 
     def _update_gan(self, x: torch.Tensor) -> None:
         """One GAN update step for all antenna generators (Eqs. 8, 9, 10)."""
-        for i, (antenna, gen, opt, scaler) in enumerate(
-            zip(self._model.antennas, self._ood_generators, self._gan_optimizers, self._gan_scalers, strict=True),
+        for i, (antenna, gen, opt_g, opt_d, opt_d_p, scal_g, scal_d, scal_d_p) in enumerate(
+            zip(
+                self._model.antennas,
+                self._ood_generators,
+                self._opts_g,
+                self._opts_d,
+                self._opts_d_prime,
+                self._scalers_g,
+                self._scalers_d,
+                self._scalers_d_prime,
+                strict=True,
+            ),
         ):
             if not isinstance(gen, AntennaOODGenerator):
                 msg = f"Expected AntennaOODGenerator, got {type(gen)}"
                 raise TypeError(msg)
 
-            opt.zero_grad()
-
-            with torch.autocast(device_type=self._device.type, dtype=torch.float16):
-                with torch.no_grad():
+            # Prepare latent vectors (fixed during this GAN step)
+            with torch.no_grad():
+                with torch.autocast(device_type=self._device.type, dtype=torch.float16):
                     mu, logvar = antenna.encode(x[:, i])
-
                 z = mu.float() + torch.exp(0.5 * logvar.float()) * torch.randn_like(logvar.float())
+
+            # Update D' (Latent Discriminator) - Eq. 9
+            opt_d_p.zero_grad()
+            with torch.autocast(device_type=self._device.type, dtype=torch.float16):
                 z_perturbed = gen.G.perturb(z)
-
-                with torch.no_grad():
-                    x_bar = antenna.decode(z_perturbed)
-
-                # D' step (Eq. 9)
                 loss_d_prime = gen.discriminator_latent_loss(z, z_perturbed)
+            scal_d_p.scale(loss_d_prime).backward()
+            scal_d_p.step(opt_d_p)
+            scal_d_p.update()
 
-                # D step (Eq. 10)
-                loss_d = gen.discriminator_input_loss(x[:, i], x_bar)
+            # Update D (Input Discriminator) - Eq. 10
+            opt_d.zero_grad()
+            with torch.autocast(device_type=self._device.type, dtype=torch.float16):
+                # We use a detached version of generated samples for D updates
+                with torch.no_grad():
+                    z_p = gen.G.perturb(z)
+                    x_b = antenna.decode(z_p)
+                loss_d = gen.discriminator_input_loss(x[:, i], x_b)
+            scal_d.scale(loss_d).backward()
+            scal_d.step(opt_d)
+            scal_d.update()
 
-                # G step (Eq. 8) — needs fresh z_perturbed with grad
+            # Update G (Generator) - Eq. 8
+            opt_g.zero_grad()
+            with torch.autocast(device_type=self._device.type, dtype=torch.float16):
+                # Gradients must flow through G and Decoder for this step
                 z_perturbed_g = gen.G.perturb(z)
                 x_bar_g = antenna.decode(z_perturbed_g)
                 loss_g = gen.generator_loss(z_perturbed_g, x_bar_g)
-
-            scaler.scale(loss_d_prime).backward()
-            scaler.scale(loss_d).backward()
-            opt.zero_grad()
-            scaler.scale(loss_g).backward()
-            scaler.step(opt)
-            scaler.update()
+            scal_g.scale(loss_g).backward()
+            scal_g.step(opt_g)
+            scal_g.update()
 
     def _run_batch(self, x: torch.Tensor, y: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # 1. Update GAN
         self._update_gan(x)
 
-        # 2. Generate OOD and train classifier
+        # Generate OOD and train classifier
         self._optimizer.zero_grad()
         x_ood = self._generate_ood_samples(x)
 

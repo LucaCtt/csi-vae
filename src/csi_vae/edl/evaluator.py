@@ -1,8 +1,12 @@
 from collections.abc import Callable
 
+import numpy as np
 import torch
+from sklearn.metrics import roc_auc_score
 
 from csi_vae.jobs import fusion
+
+_MIN_SAMPLES_FOR_AUROC = 2
 
 
 class EDLEvaluator:
@@ -32,7 +36,7 @@ class EDLEvaluator:
         self._device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     @torch.no_grad()
-    def evaluate(self) -> tuple[float, float, float]:
+    def evaluate(self) -> tuple[float, float, float, float]:
         """Evaluate the EDL model on the given dataloader.
 
         Returns:
@@ -40,32 +44,40 @@ class EDLEvaluator:
                 - float: Accuracy of the model on the dataloader.
                 - float: Mean uncertainty for correctly classified samples.
                 - float: Mean uncertainty for incorrectly classified samples.
+                - float: AUROC for misclassification detection.
+                    Measures how well uncertainty discriminates wrong from correct predictions.
+                    0.5 = random, 1.0 = perfect separation.
 
         """
         self._model.eval()
-        device = self._device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        n_correct = total = n_wrong = 0
-        mean_uncertainty_correct = mean_uncertainty_wrong = 0
+        all_uncertainties = []
+        all_correct = []
 
-        with torch.no_grad():
-            for x, y in self._dataloader:
-                with torch.autocast(device_type=device.type, dtype=torch.float16):
-                    logits = self._model(x.to(device))
+        for x, y in self._dataloader:
+            with torch.autocast(device_type=self._device.type, dtype=torch.float16):
+                logits = self._model(x.to(self._device))
 
-                pred, uncertainty, _ = self._inference_fn(logits.float())
+            pred, uncertainty, _ = self._inference_fn(logits.float())
+            mask_correct = pred == y.to(self._device)
 
-                mask_correct = pred == y.to(device)
-                mask_wrong = ~mask_correct
+            all_correct.extend(mask_correct.cpu().numpy())
+            all_uncertainties.extend(uncertainty.cpu().numpy())
 
-                total += y.size(0)
-                mean_uncertainty_correct += uncertainty[mask_correct].sum().item()
-                mean_uncertainty_wrong += uncertainty[mask_wrong].sum().item()
-                n_correct += mask_correct.sum().item()
-                n_wrong += mask_wrong.sum().item()
+        all_correct = np.array(all_correct)
+        all_uncertainties = np.array(all_uncertainties)
 
-        return (
-            n_correct / total,
-            mean_uncertainty_correct / max(n_correct, 1),
-            mean_uncertainty_wrong / max(n_wrong, 1),
-        )
+        accuracy = all_correct.mean()
+        unc_correct = all_uncertainties[all_correct].mean() if all_correct.any() else 0.0
+        unc_wrong = all_uncertainties[~all_correct].mean() if (~all_correct).any() else 0.0
+
+        # AUROC: label=1 for wrong predictions (should have high uncertainty)
+        n_wrong = (~all_correct).sum()
+        n_correct = all_correct.sum()
+        auroc = (
+            0.5
+            if n_wrong < _MIN_SAMPLES_FOR_AUROC or n_correct < _MIN_SAMPLES_FOR_AUROC
+            else roc_auc_score(~all_correct, all_uncertainties)
+        )  # degenerate — nearly perfect accuracy or all wrong
+
+        return accuracy, float(unc_correct), float(unc_wrong), float(auroc)

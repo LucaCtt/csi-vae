@@ -18,6 +18,11 @@ from csi_vae.jobs import dataset, fusion, vae
 from csi_vae.jobs.job import init_rng, make_dataloader
 from csi_vae.studies import get_best_model, make_study, read_studies
 
+ALPHA = 0.5
+"""Weight for balancing accuracy and uncertainty in the objective function."""
+AUROC_THRESHOLD = 0.5
+"""Minimum AUROC required to consider a trial successful. Trials with AUROC below this will be pruned."""
+
 # Logging config
 handler = RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=True)
 logging.basicConfig(level=logging.INFO, handlers=[handler], format="%(message)s")
@@ -94,14 +99,15 @@ def _edl_objective(trial: optuna.Trial) -> float:
         wi_har_results.params["n_fusion_layers"],
         wi_har_results.params["fusion_dropout"],
     )
-    anneal_epochs = trial.suggest_int("anneal_epochs", 1, 2 * settings.n_epochs // 3)
+    anneal_epochs = trial.suggest_int("anneal_epochs", 10, 3 * settings.n_epochs // 4)
+    lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
 
     edl_trainer = EDLTrainer(
         edl_fusion,
         train_dl,
         val_dl,
         EDLTrainerParams(
-            lr=wi_har_results.params["lr"],
+            lr=lr,
             early_stop_patience=settings.early_stop_patience,
             early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
             loss_type="sse",
@@ -118,7 +124,7 @@ def _edl_objective(trial: optuna.Trial) -> float:
         out_dir / "delayed_fusion.pt",
     )
 
-    accuracy, unc_correct, unc_wrong = EDLEvaluator(
+    accuracy, unc_correct, unc_wrong, auroc = EDLEvaluator(
         model=edl_fusion,
         inference_fn=edl_inference,
         dataloader=test_dl,
@@ -126,19 +132,21 @@ def _edl_objective(trial: optuna.Trial) -> float:
     trial.set_user_attr("accuracy", accuracy)
     trial.set_user_attr("unc_correct", unc_correct)
     trial.set_user_attr("unc_wrong", unc_wrong)
+    trial.set_user_attr("auroc", auroc)
 
-    if unc_wrong < unc_correct:
+    if auroc < AUROC_THRESHOLD:
         raise optuna.TrialPruned
 
     logger.info(
-        "[EDL] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f",
+        "[EDL] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f, AUROC: %.4f",
         trial.number,
         accuracy,
         unc_correct,
         unc_wrong,
+        auroc,
     )
 
-    return settings.objective_alpha * accuracy + (1 - settings.objective_alpha) * (unc_wrong - unc_correct)
+    return (accuracy * auroc * (1 - unc_correct)) ** (1 / 3)
 
 
 def _gen_objective(trial: optuna.Trial) -> float:
@@ -162,16 +170,17 @@ def _gen_objective(trial: optuna.Trial) -> float:
     )
 
     beta = trial.suggest_categorical("beta_mode", ["auto", "anneal"])
-    anneal_epochs = trial.suggest_int("anneal_epochs", 1, 2 * settings.n_epochs // 3) if beta == "anneal" else 0
-    gan_hidden_dim = trial.suggest_categorical("gan_hidden_dim", [64, 128, 256])
+    anneal_epochs = trial.suggest_int("anneal_epochs", 10, 3 * settings.n_epochs // 4) if beta == "anneal" else 10
+    gan_hidden_dim = trial.suggest_int("gan_hidden_dim", 32, 256, step=32)
     gan_lr = trial.suggest_float("gan_lr", 1e-5, 1e-3, log=True)
+    lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
 
     gen_trainer = GENTrainer(
         gen_fusion,
         train_dl,
         val_dl,
         GENTrainerParams(
-            lr=wi_har_results.params["lr"],
+            lr=lr,
             early_stop_patience=settings.early_stop_patience,
             early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
             beta=beta,  # pyright: ignore[reportArgumentType]
@@ -189,7 +198,7 @@ def _gen_objective(trial: optuna.Trial) -> float:
         out_dir / "delayed_fusion.pt",
     )
 
-    accuracy, unc_correct, unc_wrong = EDLEvaluator(
+    accuracy, unc_correct, unc_wrong, auroc = EDLEvaluator(
         model=gen_fusion,
         inference_fn=gen_inference,
         dataloader=test_dl,
@@ -197,19 +206,21 @@ def _gen_objective(trial: optuna.Trial) -> float:
     trial.set_user_attr("accuracy", accuracy)
     trial.set_user_attr("unc_correct", unc_correct)
     trial.set_user_attr("unc_wrong", unc_wrong)
+    trial.set_user_attr("auroc", auroc)
 
-    if unc_wrong - unc_correct < 0:
+    if auroc < AUROC_THRESHOLD:
         raise optuna.TrialPruned
 
     logger.info(
-        "[GEN] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f",
+        "[GEN] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f, AUROC: %.4f",
         trial.number,
         accuracy,
         unc_correct,
         unc_wrong,
+        auroc,
     )
 
-    return settings.objective_alpha * accuracy + (1 - settings.objective_alpha) * (unc_wrong - unc_correct)
+    return  (accuracy * auroc * (1 - unc_correct)) ** (1 / 3)
 
 
 def _run_study(study_name: str, objective_fn: Callable) -> None:
