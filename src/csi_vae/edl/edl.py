@@ -1,4 +1,5 @@
 import logging
+import math
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -20,8 +21,6 @@ from csi_vae.studies import get_best_model, make_study, read_studies
 
 ALPHA = 0.5
 """Weight for balancing accuracy and uncertainty in the objective function."""
-AUROC_THRESHOLD = 0.5
-"""Minimum AUROC required to consider a trial successful. Trials with AUROC below this will be pruned."""
 
 # Logging config
 handler = RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=True)
@@ -124,7 +123,7 @@ def _edl_objective(trial: optuna.Trial) -> float:
         out_dir / "delayed_fusion.pt",
     )
 
-    accuracy, unc_correct, unc_wrong, auroc = EDLEvaluator(
+    accuracy, unc_correct, unc_wrong, cohens_d = EDLEvaluator(
         model=edl_fusion,
         inference_fn=edl_inference,
         dataloader=test_dl,
@@ -132,21 +131,22 @@ def _edl_objective(trial: optuna.Trial) -> float:
     trial.set_user_attr("accuracy", accuracy)
     trial.set_user_attr("unc_correct", unc_correct)
     trial.set_user_attr("unc_wrong", unc_wrong)
-    trial.set_user_attr("auroc", auroc)
+    trial.set_user_attr("cohens_d", cohens_d)
 
-    if auroc < AUROC_THRESHOLD:
+    if cohens_d < 0:
         raise optuna.TrialPruned
 
     logger.info(
-        "[EDL] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f, AUROC: %.4f",
+        "[EDL] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f, Cohen's d: %.4f",
         trial.number,
         accuracy,
         unc_correct,
         unc_wrong,
-        auroc,
+        cohens_d,
     )
+    cohens_d_normalized = float(math.tanh(cohens_d / 2))
 
-    return (accuracy * auroc * (1 - unc_correct)) ** (1 / 3)
+    return ALPHA * accuracy + (1 - ALPHA) * cohens_d_normalized
 
 
 def _gen_objective(trial: optuna.Trial) -> float:
@@ -198,7 +198,7 @@ def _gen_objective(trial: optuna.Trial) -> float:
         out_dir / "delayed_fusion.pt",
     )
 
-    accuracy, unc_correct, unc_wrong, auroc = EDLEvaluator(
+    accuracy, unc_correct, unc_wrong, cohens_d = EDLEvaluator(
         model=gen_fusion,
         inference_fn=gen_inference,
         dataloader=test_dl,
@@ -206,21 +206,23 @@ def _gen_objective(trial: optuna.Trial) -> float:
     trial.set_user_attr("accuracy", accuracy)
     trial.set_user_attr("unc_correct", unc_correct)
     trial.set_user_attr("unc_wrong", unc_wrong)
-    trial.set_user_attr("auroc", auroc)
+    trial.set_user_attr("cohens_d", cohens_d)
 
-    if auroc < AUROC_THRESHOLD:
+    if cohens_d < 0:
         raise optuna.TrialPruned
 
     logger.info(
-        "[GEN] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f, AUROC: %.4f",
+        "[GEN] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f, Cohen's d: %.4f",
         trial.number,
         accuracy,
         unc_correct,
         unc_wrong,
-        auroc,
+        cohens_d,
     )
 
-    return  (accuracy * auroc * (1 - unc_correct)) ** (1 / 3)
+    cohens_d_normalized = float(math.tanh(cohens_d / 2))
+
+    return ALPHA * accuracy + (1 - ALPHA) * cohens_d_normalized
 
 
 def _run_study(study_name: str, objective_fn: Callable) -> None:

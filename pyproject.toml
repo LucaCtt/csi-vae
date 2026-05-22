@@ -19,9 +19,6 @@ launcher = [
     "optuna>=4.7.0",
     "rich>=14.3.3",
 ]
-edl = [
-    "scikit-learn>=1.8.0",
-]
 notebooks = [
     "dtreeviz>=2.3.2",
     "edl-losses>=0.6.0",
