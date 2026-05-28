@@ -324,7 +324,8 @@ class GENTrainer(fusion.Trainer):
 
             with torch.autocast(device_type=self._device.type, dtype=torch.float16):
                 mu, logvar = antenna.encode(x[:, i])
-                z = mu + torch.exp(0.5 * logvar) * torch.randn_like(logvar)
+
+            z = mu.float() + torch.exp(0.5 * logvar.float()) * torch.randn_like(logvar.float())
 
             with torch.autocast(device_type=self._device.type, dtype=torch.float16):
                 z_ood = gen.generate(z)
@@ -354,9 +355,10 @@ class GENTrainer(fusion.Trainer):
                 raise TypeError(msg)
 
             # Prepare latent vectors (fixed during this GAN step)
-            with torch.no_grad(), torch.autocast(device_type=self._device.type, dtype=torch.float16):
-                mu, logvar = antenna.encode(x[:, i])
-                z = mu + torch.exp(0.5 * logvar) * torch.randn_like(logvar)
+            with torch.no_grad():
+                with torch.autocast(device_type=self._device.type, dtype=torch.float16):
+                    mu, logvar = antenna.encode(x[:, i])
+                z = mu.float() + torch.exp(0.5 * logvar.float()) * torch.randn_like(logvar.float())
 
             # Update D' (Latent Discriminator) - Eq. 9
             opt_d_p.zero_grad()
@@ -401,16 +403,13 @@ class GENTrainer(fusion.Trainer):
             logits_in = self._model(x)
             logits_out = self._model(x_ood)
 
-        logits_in = torch.clamp(logits_in, min=-10.0, max=10.0)
-        logits_out = torch.clamp(logits_out, min=-10.0, max=10.0)
-
-        loss = self._criterion(logits_in, logits_out, y, epoch=self._current_epoch)
+        loss = self._criterion(logits_in.float(), logits_out.float(), y, epoch=self._current_epoch)
         self._scaler.scale(loss).backward()
         self._scaler.step(self._optimizer)
         self._scaler.update()
 
-        class_indices, _, _ = gen_inference(logits_in)
-        accuracy = (class_indices == y).mean()
+        class_indices, _, _ = gen_inference(logits_in.float())
+        accuracy = (class_indices == y).float().mean()
 
         return loss.detach(), accuracy
 
@@ -431,10 +430,7 @@ class GENTrainer(fusion.Trainer):
                 logits_in = self._model(x)
                 logits_out = self._model(x_ood)
 
-            logits_in = torch.clamp(logits_in, min=-10.0, max=10.0)
-            logits_out = torch.clamp(logits_out, min=-10.0, max=10.0)
-
-            loss = self._criterion(logits_in, logits_out, y, epoch=self._current_epoch)
+            loss = self._criterion(logits_in.float(), logits_out.float(), y, epoch=self._current_epoch)
             total_loss += loss.detach()
 
         return total_loss / self._len_val

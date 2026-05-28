@@ -227,15 +227,11 @@ dependencies = [
     { name = "h5py" },
     { name = "numpy" },
     { name = "pydantic-settings" },
-    { name = "scienceplots" },
     { name = "tenacity" },
     { name = "torch" },
 ]
 
 [package.optional-dependencies]
-edl = [
-    { name = "scikit-learn" },
-]
 launcher = [
     { name = "optuna" },
     { name = "rich" },
@@ -247,6 +243,7 @@ notebooks = [
     { name = "matplotlib" },
     { name = "optuna" },
     { name = "pandas" },
+    { name = "scienceplots" },
     { name = "scikit-learn" },
     { name = "scipy" },
 ]
@@ -270,14 +267,13 @@ requires-dist = [
     { name = "pandas", marker = "extra == 'notebooks'", specifier = ">=3.0.1" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
     { name = "rich", marker = "extra == 'launcher'", specifier = ">=14.3.3" },
-    { name = "scienceplots", specifier = ">=2.2.1" },
-    { name = "scikit-learn", marker = "extra == 'edl'", specifier = ">=1.8.0" },
+    { name = "scienceplots", marker = "extra == 'notebooks'", specifier = ">=2.2.1" },
     { name = "scikit-learn", marker = "extra == 'notebooks'", specifier = ">=1.8.0" },
     { name = "scipy", marker = "extra == 'notebooks'", specifier = ">=1.17.1" },
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "torch", specifier = ">=2.10.0" },
 ]
-provides-extras = ["launcher", "edl", "notebooks"]
+provides-extras = ["launcher", "notebooks"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "ruff", specifier = ">=0.15.4" }]

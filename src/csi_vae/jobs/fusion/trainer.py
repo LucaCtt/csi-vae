@@ -128,6 +128,10 @@ class Trainer:
             epochs_run += 1
 
             val_loss = self._run_val_epoch()
+            if val_loss == float("inf") or torch.isnan(val_loss):
+                msg = f"Validation loss is {val_loss.item()}, which is invalid. Stopping training."
+                raise ValueError(msg)
+
             self._early_stopping.step(val_loss)
             if self._early_stopping.should_stop:
                 break

@@ -1,5 +1,4 @@
 import logging
-import math
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -18,9 +17,6 @@ from csi_vae.edl.gen_trainer import GENTrainer, GENTrainerParams
 from csi_vae.jobs import dataset, fusion, vae
 from csi_vae.jobs.job import init_rng, make_dataloader
 from csi_vae.studies import get_best_model, make_study, read_studies
-
-ALPHA = 0.5
-"""Weight for balancing accuracy and uncertainty in the objective function."""
 
 # Logging config
 handler = RichHandler(level=logging.INFO, show_path=False, rich_tracebacks=True)
@@ -99,17 +95,17 @@ def _edl_objective(trial: optuna.Trial) -> float:
         wi_har_results.params["fusion_dropout"],
     )
     anneal_epochs = trial.suggest_int("anneal_epochs", 10, 3 * settings.n_epochs // 4)
-    lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
+    loss_type = trial.suggest_categorical("loss_type", ["sse", "mse", "ce"])
 
     edl_trainer = EDLTrainer(
         edl_fusion,
         train_dl,
         val_dl,
         EDLTrainerParams(
-            lr=lr,
+            lr=wi_har_results.params["lr"],
             early_stop_patience=settings.early_stop_patience,
             early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
-            loss_type="sse",
+            loss_type=loss_type, # pyright: ignore[reportArgumentType]
             beta="anneal",
             anneal_epochs=anneal_epochs,
         ),
@@ -123,7 +119,7 @@ def _edl_objective(trial: optuna.Trial) -> float:
         out_dir / "delayed_fusion.pt",
     )
 
-    accuracy, unc_correct, unc_wrong, cohens_d = EDLEvaluator(
+    accuracy, unc_correct, unc_wrong = EDLEvaluator(
         model=edl_fusion,
         inference_fn=edl_inference,
         dataloader=test_dl,
@@ -131,22 +127,19 @@ def _edl_objective(trial: optuna.Trial) -> float:
     trial.set_user_attr("accuracy", accuracy)
     trial.set_user_attr("unc_correct", unc_correct)
     trial.set_user_attr("unc_wrong", unc_wrong)
-    trial.set_user_attr("cohens_d", cohens_d)
 
-    if cohens_d < 0:
+    if unc_correct >= unc_wrong or accuracy < 0.8:
         raise optuna.TrialPruned
 
     logger.info(
-        "[EDL] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f, Cohen's d: %.4f",
+        "[EDL] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f",
         trial.number,
         accuracy,
         unc_correct,
         unc_wrong,
-        cohens_d,
     )
-    cohens_d_normalized = float(math.tanh(cohens_d / 2))
 
-    return ALPHA * accuracy + (1 - ALPHA) * cohens_d_normalized
+    return 2 * (accuracy * unc_correct) / (accuracy + unc_correct + 1e-8)
 
 
 def _gen_objective(trial: optuna.Trial) -> float:
@@ -173,14 +166,13 @@ def _gen_objective(trial: optuna.Trial) -> float:
     anneal_epochs = trial.suggest_int("anneal_epochs", 10, 3 * settings.n_epochs // 4) if beta == "anneal" else 10
     gan_hidden_dim = trial.suggest_int("gan_hidden_dim", 32, 256, step=32)
     gan_lr = trial.suggest_float("gan_lr", 1e-5, 1e-3, log=True)
-    lr = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
 
     gen_trainer = GENTrainer(
         gen_fusion,
         train_dl,
         val_dl,
         GENTrainerParams(
-            lr=lr,
+            lr=wi_har_results.params["lr"],
             early_stop_patience=settings.early_stop_patience,
             early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
             beta=beta,  # pyright: ignore[reportArgumentType]
@@ -198,7 +190,7 @@ def _gen_objective(trial: optuna.Trial) -> float:
         out_dir / "delayed_fusion.pt",
     )
 
-    accuracy, unc_correct, unc_wrong, cohens_d = EDLEvaluator(
+    accuracy, unc_correct, unc_wrong = EDLEvaluator(
         model=gen_fusion,
         inference_fn=gen_inference,
         dataloader=test_dl,
@@ -206,23 +198,19 @@ def _gen_objective(trial: optuna.Trial) -> float:
     trial.set_user_attr("accuracy", accuracy)
     trial.set_user_attr("unc_correct", unc_correct)
     trial.set_user_attr("unc_wrong", unc_wrong)
-    trial.set_user_attr("cohens_d", cohens_d)
 
-    if cohens_d < 0:
+    if unc_correct >= unc_wrong:
         raise optuna.TrialPruned
 
     logger.info(
-        "[GEN] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f, Cohen's d: %.4f",
+        "[GEN] Trial %d - Accuracy: %.4f, Unc Correct: %.4f, Unc Wrong: %.4f",
         trial.number,
         accuracy,
         unc_correct,
         unc_wrong,
-        cohens_d,
     )
 
-    cohens_d_normalized = float(math.tanh(cohens_d / 2))
-
-    return ALPHA * accuracy + (1 - ALPHA) * cohens_d_normalized
+    return 2 * (accuracy * unc_correct) / (accuracy + unc_correct + 1e-8)
 
 
 def _run_study(study_name: str, objective_fn: Callable) -> None:
@@ -256,7 +244,7 @@ def _run_study(study_name: str, objective_fn: Callable) -> None:
 def run_edl() -> None:
     """Run both EDL and GEN studies."""
     _run_study("edl", _edl_objective)
-    _run_study("gen", _gen_objective)
+    #_run_study("gen", _gen_objective)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,6 @@ dependencies = [
     "h5py>=3.16.0",
     "numpy>=2.4.2",
     "pydantic-settings>=2.13.1",
-    "scienceplots>=2.2.1",
     "tenacity>=9.1.4",
     "torch>=2.10.0",
 ]
@@ -26,8 +25,9 @@ notebooks = [
     "matplotlib>=3.10.8",
     "optuna>=4.7.0",
     "pandas>=3.0.1",
-    "scipy>=1.17.1",
+    "scienceplots>=2.2.1",
     "scikit-learn>=1.8.0",
+    "scipy>=1.17.1",
 ]
 
 [dependency-groups]
