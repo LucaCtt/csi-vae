@@ -105,7 +105,7 @@ def _edl_objective(trial: optuna.Trial) -> float:
             lr=wi_har_results.params["lr"],
             early_stop_patience=settings.early_stop_patience,
             early_stop_warmup_epochs=settings.early_stop_warmup_epochs,
-            loss_type=loss_type, # pyright: ignore[reportArgumentType]
+            loss_type=loss_type,  # pyright: ignore[reportArgumentType]
             beta="anneal",
             anneal_epochs=anneal_epochs,
         ),
@@ -128,7 +128,7 @@ def _edl_objective(trial: optuna.Trial) -> float:
     trial.set_user_attr("unc_correct", unc_correct)
     trial.set_user_attr("unc_wrong", unc_wrong)
 
-    if unc_correct >= unc_wrong or accuracy < 0.8:
+    if unc_correct >= unc_wrong:
         raise optuna.TrialPruned
 
     logger.info(
@@ -244,7 +244,7 @@ def _run_study(study_name: str, objective_fn: Callable) -> None:
 def run_edl() -> None:
     """Run both EDL and GEN studies."""
     _run_study("edl", _edl_objective)
-    #_run_study("gen", _gen_objective)
+    _run_study("gen", _gen_objective)
 
 
 if __name__ == "__main__":
