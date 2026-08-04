@@ -18,6 +18,10 @@ To run a training job locally, run:
 uv run python src/csi_vae/jobs/job.py
 ```
 
+## Models Weights
+
+You can find the weights of the trained models on [Harvard Dataverse](https://dataverse.harvard.edu/dataverse/csi-vae).
+
 ## Acknowledgements
 
 The work is partially supported by the European Office of Aerospace ResearchDevelopment (EOARD) under award number FA8655-22-1-7017 and by the US DEVCOM Army Research Laboratory (ARL) under Cooperative Agreements #W911NF2220243 and #W911NF1720196. Any opinions, findings, and conclusions or recommendations expressed in this material are those of the authors and do not necessarily reflect the views of the United States government.
@@ -26,3 +30,4 @@ The work is partially supported by the European Office of Aerospace ResearchDeve
 
 - Luca Cotti <luca.cotti@unibs.it>
 - Marco Cominelli <marco.cominelli@polimi.it>
+- Federico Cerutti <federico.cerutti@unibs.it>
